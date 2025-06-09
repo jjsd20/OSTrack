@@ -25,6 +25,6 @@ def parameters(yaml_name: str):
                                      (yaml_name, cfg.TEST.EPOCH))
 
     # whether to save boxes from all queries
-    params.save_all_boxes = True
+    params.save_all_boxes = False
 
     return params
