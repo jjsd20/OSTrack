@@ -84,18 +84,18 @@ def names2datasets(name_list: list, settings, image_loader):
 def build_dataloaders(cfg, settings):
     # Data transform
     transform_joint = tfm.Transform(tfm.ToGrayscale(probability=0.05),
-                                    tfm.RandomHorizontalFlip(probability=0.5))
+                                    tfm.RandomHorizontalFlip(probability=0.5))#定义联合变换
 
     transform_train = tfm.Transform(tfm.ToTensorAndJitter(0.2),
                                     tfm.RandomHorizontalFlip_Norm(probability=0.5),
-                                    tfm.Normalize(mean=cfg.DATA.MEAN, std=cfg.DATA.STD))
+                                    tfm.Normalize(mean=cfg.DATA.MEAN, std=cfg.DATA.STD)) #定义训练数据变换
 
     transform_val = tfm.Transform(tfm.ToTensor(),
-                                  tfm.Normalize(mean=cfg.DATA.MEAN, std=cfg.DATA.STD))
+                                  tfm.Normalize(mean=cfg.DATA.MEAN, std=cfg.DATA.STD)) #定义验证数据变换
 
     # The tracking pairs processing module
-    output_sz = settings.output_sz
-    search_area_factor = settings.search_area_factor
+    output_sz = settings.output_sz #TEMPLATE.SIZE=128， SEARCH.SIZE=256
+    search_area_factor = settings.search_area_factor #TEMPLATE.FACTOR=2.0, SEARCH.FACTOR=4.0
 
     data_processing_train = processing.STARKProcessing(search_area_factor=search_area_factor,
                                                        output_sz=output_sz,

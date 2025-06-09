@@ -7,7 +7,12 @@ from lib.models.layers.rpe import generate_2d_concatenated_self_attention_relati
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.,
+    def __init__(self,
+                 dim,
+                 num_heads=8,
+                 qkv_bias=False,
+                 attn_drop=0.,
+                 proj_drop=0.,
                  rpe=False, z_size=7, x_size=14):
         super().__init__()
         self.num_heads = num_heads
@@ -34,9 +39,13 @@ class Attention(nn.Module):
         # x: B, N, C
         # mask: [B, N, ] torch.bool
         B, N, C = x.shape
+        #qkv():[batch_size,num_patches+1,total_embed_dim] ->[b,14*14=196+1,3*total_embed_dim=768]
+        #reshape():[batch_size,num_patches+1,3,num_heads,total_embed_dim//num_heads]
+        #permute():[batch_size,3,num_heads,num_patches+1,total_embed_dim//num_heads]
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        #qkv.unbind(0)->qkv[0],qkv[1],qkv[2]
         q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
-
+        #transpose:-> [batch_size,num_heads,total_embed_dim//num_heads,num_patches+1]
         attn = (q @ k.transpose(-2, -1)) * self.scale
 
         if self.rpe:
@@ -47,7 +56,7 @@ class Attention(nn.Module):
             attn = attn.masked_fill(mask.unsqueeze(1).unsqueeze(2), float('-inf'),)
 
         attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+        attn = self.attn_drop(attn)#随机失活
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
