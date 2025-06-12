@@ -64,9 +64,9 @@ def run(settings):
         settings.device = torch.device("cuda:%d" % settings.local_rank)
     else:
         settings.device = torch.device("cuda:0")
-    settings.deep_sup = getattr(cfg.TRAIN, "DEEP_SUPERVISION", False)
-    settings.distill = getattr(cfg.TRAIN, "DISTILL", False)
-    settings.distill_loss_type = getattr(cfg.TRAIN, "DISTILL_LOSS_TYPE", "KL")
+    settings.deep_sup = getattr(cfg.TRAIN, "DEEP_SUPERVISION", False)#FALSE
+    settings.distill = getattr(cfg.TRAIN, "DISTILL", False)#FALSE
+    settings.distill_loss_type = getattr(cfg.TRAIN, "DISTILL_LOSS_TYPE", "KL")#KL
     # Loss functions and Actors
     if settings.script_name == "ostrack":
         focal_loss = FocalLoss()

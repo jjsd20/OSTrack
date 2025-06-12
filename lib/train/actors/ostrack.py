@@ -54,10 +54,10 @@ class OSTrackActor(BaseActor):
         ce_keep_rate = None
         if self.cfg.MODEL.BACKBONE.CE_LOC:
             box_mask_z = generate_mask_cond(self.cfg, template_list[0].shape[0], template_list[0].device,
-                                            data['template_anno'][0])
+                                            data['template_anno'][0])#[32,64]
 
-            ce_start_epoch = self.cfg.TRAIN.CE_START_EPOCH
-            ce_warm_epoch = self.cfg.TRAIN.CE_WARM_EPOCH
+            ce_start_epoch = self.cfg.TRAIN.CE_START_EPOCH#20
+            ce_warm_epoch = self.cfg.TRAIN.CE_WARM_EPOCH#80
             ce_keep_rate = adjust_keep_rate(data['epoch'], warmup_epochs=ce_start_epoch,
                                                 total_epochs=ce_start_epoch + ce_warm_epoch,
                                                 ITERS_PER_EPOCH=1,
@@ -76,12 +76,12 @@ class OSTrackActor(BaseActor):
 
     def compute_losses(self, pred_dict, gt_dict, return_status=True):
         # gt gaussian map
-        gt_bbox = gt_dict['search_anno'][-1]  # (Ns, batch, 4) (x1,y1,w,h) -> (batch, 4)
+        gt_bbox = gt_dict['search_anno'][-1] #[32,4] # (Ns, batch, 4) (x1,y1,w,h) -> (batch, 4)
         gt_gaussian_maps = generate_heatmap(gt_dict['search_anno'], self.cfg.DATA.SEARCH.SIZE, self.cfg.MODEL.BACKBONE.STRIDE)
         gt_gaussian_maps = gt_gaussian_maps[-1].unsqueeze(1)
 
         # Get boxes
-        pred_boxes = pred_dict['pred_boxes']
+        pred_boxes = pred_dict['pred_boxes']#[32,1,4]
         if torch.isnan(pred_boxes).any():
             raise ValueError("Network outputs is NAN! Stop Training")
         num_queries = pred_boxes.size(1)

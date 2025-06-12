@@ -92,7 +92,7 @@ class CEBlock(nn.Module):
     def forward(self, x, global_index_template, global_index_search, mask=None, ce_template_mask=None, keep_ratio_search=None):
         x_attn, attn = self.attn(self.norm1(x), mask, True)
         x = x + self.drop_path(x_attn)
-        lens_t = global_index_template.shape[1]
+        lens_t = global_index_template.shape[1]#64
 
         removed_index_search = None
         if self.keep_ratio_search < 1 and (keep_ratio_search is None or keep_ratio_search < 1):

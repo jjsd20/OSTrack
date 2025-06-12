@@ -70,11 +70,11 @@ class VisionTransformerCE(VisionTransformer):
 
         self.patch_embed = embed_layer(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
-        num_patches = self.patch_embed.num_patches
+        num_patches = self.patch_embed.num_patches #196
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) #(1, 1, 768)
         self.dist_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if distilled else None
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim)) # (1, 197, 768)
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
@@ -105,12 +105,12 @@ class VisionTransformerCE(VisionTransformer):
                          ):
         B, H, W = x.shape[0], x.shape[2], x.shape[3]
 
-        x = self.patch_embed(x)
-        z = self.patch_embed(z)
+        x = self.patch_embed(x)#[32,256,768]
+        z = self.patch_embed(z)#[32,64,768]
 
         # attention mask handling
         # B, H, W
-        if mask_z is not None and mask_x is not None:
+        if mask_z is not None and mask_x is not None:#false
             mask_z = F.interpolate(mask_z[None].float(), scale_factor=1. / self.patch_size).to(torch.bool)[0]
             mask_z = mask_z.flatten(1).unsqueeze(-1)
 
@@ -120,47 +120,47 @@ class VisionTransformerCE(VisionTransformer):
             mask_x = combine_tokens(mask_z, mask_x, mode=self.cat_mode)
             mask_x = mask_x.squeeze(-1)
 
-        if self.add_cls_token:
+        if self.add_cls_token:#false
             cls_tokens = self.cls_token.expand(B, -1, -1)
             cls_tokens = cls_tokens + self.cls_pos_embed
 
-        z += self.pos_embed_z
-        x += self.pos_embed_x
+        z += self.pos_embed_z#[32,64,768]+[1,64,768]
+        x += self.pos_embed_x#[32,256,768]+[1,256,768]
 
-        if self.add_sep_seg:
+        if self.add_sep_seg:#false
             x += self.search_segment_pos_embed
             z += self.template_segment_pos_embed
 
-        x = combine_tokens(z, x, mode=self.cat_mode)
+        x = combine_tokens(z, x, mode=self.cat_mode)#[32,320,768]
         if self.add_cls_token:
             x = torch.cat([cls_tokens, x], dim=1)
 
         x = self.pos_drop(x)
 
-        lens_z = self.pos_embed_z.shape[1]
-        lens_x = self.pos_embed_x.shape[1]
+        lens_z = self.pos_embed_z.shape[1]#64
+        lens_x = self.pos_embed_x.shape[1]#256
 
-        global_index_t = torch.linspace(0, lens_z - 1, lens_z).to(x.device)
-        global_index_t = global_index_t.repeat(B, 1)
+        global_index_t = torch.linspace(0, lens_z - 1, lens_z).to(x.device)#(64)(1,2,3,...)
+        global_index_t = global_index_t.repeat(B, 1)#[32,64]
 
         global_index_s = torch.linspace(0, lens_x - 1, lens_x).to(x.device)
-        global_index_s = global_index_s.repeat(B, 1)
+        global_index_s = global_index_s.repeat(B, 1)#[32,256]
         removed_indexes_s = []
         for i, blk in enumerate(self.blocks):
             x, global_index_t, global_index_s, removed_index_s, attn = \
                 blk(x, global_index_t, global_index_s, mask_x, ce_template_mask, ce_keep_rate)
 
-            if self.ce_loc is not None and i in self.ce_loc:
+            if self.ce_loc is not None and i in self.ce_loc:#false
                 removed_indexes_s.append(removed_index_s)
 
         x = self.norm(x)
-        lens_x_new = global_index_s.shape[1]
-        lens_z_new = global_index_t.shape[1]
+        lens_x_new = global_index_s.shape[1]#256
+        lens_z_new = global_index_t.shape[1]#64
 
         z = x[:, :lens_z_new]
         x = x[:, lens_z_new:]
 
-        if removed_indexes_s and removed_indexes_s[0] is not None:
+        if removed_indexes_s and removed_indexes_s[0] is not None:#false
             removed_indexes_cat = torch.cat(removed_indexes_s, dim=1)
 
             pruned_lens_x = lens_x - lens_x_new

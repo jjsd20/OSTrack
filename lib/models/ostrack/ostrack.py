@@ -31,8 +31,8 @@ class OSTrack(nn.Module):
         self.aux_loss = aux_loss
         self.head_type = head_type
         if head_type == "CORNER" or head_type == "CENTER":
-            self.feat_sz_s = int(box_head.feat_sz)
-            self.feat_len_s = int(box_head.feat_sz ** 2)
+            self.feat_sz_s = int(box_head.feat_sz)#16
+            self.feat_len_s = int(box_head.feat_sz ** 2)#256
 
         if self.aux_loss:
             self.box_head = _get_clones(self.box_head, 6)
@@ -63,9 +63,9 @@ class OSTrack(nn.Module):
         cat_feature: output embeddings of the backbone, it can be (HW1+HW2, B, C) or (HW2, B, C)
         """
         enc_opt = cat_feature[:, -self.feat_len_s:]  # encoder output for the search region (B, HW, C)
-        opt = (enc_opt.unsqueeze(-1)).permute((0, 3, 2, 1)).contiguous()
+        opt = (enc_opt.unsqueeze(-1)).permute((0, 3, 2, 1)).contiguous()#[32, 1, 768, 256]
         bs, Nq, C, HW = opt.size()
-        opt_feat = opt.view(-1, C, self.feat_sz_s, self.feat_sz_s)
+        opt_feat = opt.view(-1, C, self.feat_sz_s, self.feat_sz_s)#[32, 768, 16, 16]
 
         if self.head_type == "CORNER":
             # run the corner head

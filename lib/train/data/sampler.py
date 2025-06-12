@@ -47,8 +47,8 @@ class TrackingSampler(torch.utils.data.Dataset):
         p_total = sum(p_datasets)
         self.p_datasets = [x / p_total for x in p_datasets]
 
-        self.samples_per_epoch = samples_per_epoch
-        self.max_gap = max_gap
+        self.samples_per_epoch = samples_per_epoch#60000
+        self.max_gap = max_gap #200
         self.num_search_frames = num_search_frames
         self.num_template_frames = num_template_frames
         self.processing = processing

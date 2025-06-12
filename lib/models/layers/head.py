@@ -98,30 +98,30 @@ class Corner_Predictor(nn.Module):
 class CenterPredictor(nn.Module, ):
     def __init__(self, inplanes=64, channel=256, feat_sz=20, stride=16, freeze_bn=False):
         super(CenterPredictor, self).__init__()
-        self.feat_sz = feat_sz
-        self.stride = stride
+        self.feat_sz = feat_sz#16
+        self.stride = stride#16
         self.img_sz = self.feat_sz * self.stride
 
         # corner predict
-        self.conv1_ctr = conv(inplanes, channel, freeze_bn=freeze_bn)
-        self.conv2_ctr = conv(channel, channel // 2, freeze_bn=freeze_bn)
-        self.conv3_ctr = conv(channel // 2, channel // 4, freeze_bn=freeze_bn)
-        self.conv4_ctr = conv(channel // 4, channel // 8, freeze_bn=freeze_bn)
-        self.conv5_ctr = nn.Conv2d(channel // 8, 1, kernel_size=1)
+        self.conv1_ctr = conv(inplanes, channel, freeze_bn=freeze_bn)#768->256
+        self.conv2_ctr = conv(channel, channel // 2, freeze_bn=freeze_bn)#256->128
+        self.conv3_ctr = conv(channel // 2, channel // 4, freeze_bn=freeze_bn)#128->64
+        self.conv4_ctr = conv(channel // 4, channel // 8, freeze_bn=freeze_bn)#64->32
+        self.conv5_ctr = nn.Conv2d(channel // 8, 1, kernel_size=1)#32->1
 
         # size regress
-        self.conv1_offset = conv(inplanes, channel, freeze_bn=freeze_bn)
-        self.conv2_offset = conv(channel, channel // 2, freeze_bn=freeze_bn)
-        self.conv3_offset = conv(channel // 2, channel // 4, freeze_bn=freeze_bn)
-        self.conv4_offset = conv(channel // 4, channel // 8, freeze_bn=freeze_bn)
-        self.conv5_offset = nn.Conv2d(channel // 8, 2, kernel_size=1)
+        self.conv1_offset = conv(inplanes, channel, freeze_bn=freeze_bn)#768->256
+        self.conv2_offset = conv(channel, channel // 2, freeze_bn=freeze_bn)#256->128
+        self.conv3_offset = conv(channel // 2, channel // 4, freeze_bn=freeze_bn)#128->64
+        self.conv4_offset = conv(channel // 4, channel // 8, freeze_bn=freeze_bn)#64->32
+        self.conv5_offset = nn.Conv2d(channel // 8, 2, kernel_size=1)#32->2
 
         # size regress
-        self.conv1_size = conv(inplanes, channel, freeze_bn=freeze_bn)
-        self.conv2_size = conv(channel, channel // 2, freeze_bn=freeze_bn)
-        self.conv3_size = conv(channel // 2, channel // 4, freeze_bn=freeze_bn)
-        self.conv4_size = conv(channel // 4, channel // 8, freeze_bn=freeze_bn)
-        self.conv5_size = nn.Conv2d(channel // 8, 2, kernel_size=1)
+        self.conv1_size = conv(inplanes, channel, freeze_bn=freeze_bn)#768->256
+        self.conv2_size = conv(channel, channel // 2, freeze_bn=freeze_bn)#256->128
+        self.conv3_size = conv(channel // 2, channel // 4, freeze_bn=freeze_bn)#128->64
+        self.conv4_size = conv(channel // 4, channel // 8, freeze_bn=freeze_bn)#64->32
+        self.conv5_size = nn.Conv2d(channel // 8, 2, kernel_size=1)#32->2
 
         for p in self.parameters():
             if p.dim() > 1:
@@ -140,13 +140,13 @@ class CenterPredictor(nn.Module, ):
         return score_map_ctr, bbox, size_map, offset_map
 
     def cal_bbox(self, score_map_ctr, size_map, offset_map, return_score=False):
-        max_score, idx = torch.max(score_map_ctr.flatten(1), dim=1, keepdim=True)
+        max_score, idx = torch.max(score_map_ctr.flatten(1), dim=1, keepdim=True)#all,[32,1]
         idx_y = idx // self.feat_sz
         idx_x = idx % self.feat_sz
 
-        idx = idx.unsqueeze(1).expand(idx.shape[0], 2, 1)
-        size = size_map.flatten(2).gather(dim=2, index=idx)
-        offset = offset_map.flatten(2).gather(dim=2, index=idx).squeeze(-1)
+        idx = idx.unsqueeze(1).expand(idx.shape[0], 2, 1)#[32, 2, 1]
+        size = size_map.flatten(2).gather(dim=2, index=idx)#[32, 2, 1]
+        offset = offset_map.flatten(2).gather(dim=2, index=idx).squeeze(-1)#[32, 2]
 
         # bbox = torch.cat([idx_x - size[:, 0] / 2, idx_y - size[:, 1] / 2,
         #                   idx_x + size[:, 0] / 2, idx_y + size[:, 1] / 2], dim=1) / self.feat_sz
@@ -238,9 +238,9 @@ def build_box_head(cfg, hidden_dim):
             raise ValueError()
         return corner_head
     elif cfg.MODEL.HEAD.TYPE == "CENTER":
-        in_channel = hidden_dim
-        out_channel = cfg.MODEL.HEAD.NUM_CHANNELS
-        feat_sz = int(cfg.DATA.SEARCH.SIZE / stride)
+        in_channel = hidden_dim#768
+        out_channel = cfg.MODEL.HEAD.NUM_CHANNELS#256
+        feat_sz = int(cfg.DATA.SEARCH.SIZE / stride)#16
         center_head = CenterPredictor(inplanes=in_channel, channel=out_channel,
                                       feat_sz=feat_sz, stride=stride)
         return center_head

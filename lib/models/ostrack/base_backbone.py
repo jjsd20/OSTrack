@@ -61,6 +61,7 @@ class BaseBackbone(nn.Module):
             self.patch_embed.proj.weight = old_patch_embed['proj.weight']
 
         # for patch embedding
+        # patch_start_index 开始的所有 patch 的位置编码
         patch_pos_embed = self.pos_embed[:, patch_start_index:, :]
         patch_pos_embed = patch_pos_embed.transpose(1, 2)
         B, E, Q = patch_pos_embed.shape
@@ -81,8 +82,8 @@ class BaseBackbone(nn.Module):
                                                              align_corners=False)
         template_patch_pos_embed = template_patch_pos_embed.flatten(2).transpose(1, 2)
 
-        self.pos_embed_z = nn.Parameter(template_patch_pos_embed)
-        self.pos_embed_x = nn.Parameter(search_patch_pos_embed)
+        self.pos_embed_z = nn.Parameter(template_patch_pos_embed)#[1,64,768]
+        self.pos_embed_x = nn.Parameter(search_patch_pos_embed)#[1,256,768]
 
         # for cls token (keep it but not used)
         if self.add_cls_token and patch_start_index > 0:

@@ -59,10 +59,10 @@ class STARKProcessing(BaseProcessing):
             mode - Either 'pair' or 'sequence'. If mode='sequence', then output has an extra dimension for frames
         """
         super().__init__(*args, **kwargs)
-        self.search_area_factor = search_area_factor
-        self.output_sz = output_sz
-        self.center_jitter_factor = center_jitter_factor
-        self.scale_jitter_factor = scale_jitter_factor
+        self.search_area_factor = search_area_factor#[search:4.0, template:2.0]
+        self.output_sz = output_sz#[search:256, template:128]
+        self.center_jitter_factor = center_jitter_factor#[search:3, template:0]
+        self.scale_jitter_factor = scale_jitter_factor#[search:0.25, template:0]
         self.mode = mode
         self.settings = settings
 
