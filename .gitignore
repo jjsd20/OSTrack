@@ -170,3 +170,5 @@ pytracking/evaluation/local.py
 pytracking/run_local.py
 /data/
 /output/
+/pretrained_models/
+/tensorboard/
