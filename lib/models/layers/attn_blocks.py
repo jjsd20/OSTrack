@@ -22,21 +22,21 @@ def candidate_elimination(attn: torch.Tensor, tokens: torch.Tensor, lens_t: int,
         keep_index (torch.Tensor): indices of kept search region tokens
         removed_index (torch.Tensor): indices of removed search region tokens
     """
-    lens_s = attn.shape[-1] - lens_t
-    bs, hn, _, _ = attn.shape
+    lens_s = attn.shape[-1] - lens_t #attn[b,12,320,320],lens_s:256
+    bs, hn, _, _ = attn.shape #hn:12,bs:b
 
-    lens_keep = math.ceil(keep_ratio * lens_s)
+    lens_keep = math.ceil(keep_ratio * lens_s)#0.7*256=179.2=180
     if lens_keep == lens_s:
         return tokens, global_index, None
 
-    attn_t = attn[:, :, :lens_t, lens_t:]
+    attn_t = attn[:, :, :lens_t, lens_t:]#模板的注意力，[b,12,64,256]
 
     if box_mask_z is not None:
-        box_mask_z = box_mask_z.unsqueeze(1).unsqueeze(-1).expand(-1, attn_t.shape[1], -1, attn_t.shape[-1])
+        box_mask_z = box_mask_z.unsqueeze(1).unsqueeze(-1).expand(-1, attn_t.shape[1], -1, attn_t.shape[-1])#[1,64]->[1,1,64]->[1,1,64,1]->[1,12,64,256]
         # attn_t = attn_t[:, :, box_mask_z, :]
-        attn_t = attn_t[box_mask_z]
-        attn_t = attn_t.view(bs, hn, -1, lens_s)
-        attn_t = attn_t.mean(dim=2).mean(dim=1)  # B, H, L-T, L_s --> B, L_s
+        attn_t = attn_t[box_mask_z]#[12x256 = 3072]
+        attn_t = attn_t.view(bs, hn, -1, lens_s)#[b,12,1,256]
+        attn_t = attn_t.mean(dim=2).mean(dim=1) #[1,256] # B, H, L-T, L_s --> B, L_s
 
         # attn_t = [attn_t[i, :, box_mask_z[i, :], :] for i in range(attn_t.size(0))]
         # attn_t = [attn_t[i].mean(dim=1).mean(dim=0) for i in range(len(attn_t))]

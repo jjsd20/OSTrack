@@ -110,6 +110,8 @@ Download pre-trained [MAE ViT-Base weights](https://dl.fbaipublicfiles.com/mae/p
 
 ```
 python tracking/train.py --script ostrack --config vitb_256_mae_ce_32x4_ep300 --save_dir ./output --mode multiple --nproc_per_node 4 --use_wandb 1
+
+python tracking/train.py --script ostrack --config vitb_256_mae_ce_96x1_ep300 --save_dir ./output --mode single --use_wandb 1
 ```
 
 Replace `--config` with the desired model config under `experiments/ostrack`. We use [wandb](https://github.com/wandb/client) to record detailed training logs, in case you don't want to use wandb, set `--use_wandb 0`.
@@ -126,6 +128,7 @@ Some testing examples:
 - LaSOT or other off-line evaluated benchmarks (modify `--dataset` correspondingly)
 ```
 python tracking/test.py ostrack vitb_384_mae_ce_32x4_ep300 --dataset lasot --threads 16 --num_gpus 4
+python tracking/test.py ostrack vitb_256_mae_ce_96x1_ep300 --dataset lasot --threads 0 --num_gpus 1 --debug 1
 python tracking/analysis_results.py # need to modify tracker configs and names
 ```
 - GOT10K-test
