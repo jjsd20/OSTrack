@@ -437,10 +437,10 @@ class Visdom:
         self.debug = debug
         if env is not None:
             self.visdom = visdom.Visdom(server=visdom_info.get('server', '127.0.0.1'),
-                                        port=visdom_info.get('port', 8097), env=env)
+                                        port=visdom_info.get('port', 8098), env=env)
         else:
             self.visdom = visdom.Visdom(server=visdom_info.get('server', '127.0.0.1'),
-                                        port=visdom_info.get('port', 8097))
+                                        port=visdom_info.get('port', 8098))
         self.registered_blocks = {}
         self.blocks_list = []
 
