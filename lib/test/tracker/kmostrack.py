@@ -41,10 +41,10 @@ class KMOSTrack(BaseTracker):
             [1, 0, 0, 0],
             [0, 1, 0, 0]
         ])
-        self.kf.R *= 10.  # measurement noise
-        self.kf.P[2:, 2:] *= 1000.  # state uncertainty
+        self.kf.R *= 4.  # measurement noise
+        self.kf.P[2:, 2:] *= 1 # state uncertainty
         self.kf.P *= 10.
-        self.kf.Q[2:, 2:] *= 0.01  # process noise
+        self.kf.Q[2:, 2:] *= 0.5  # process noise
 
         self.feat_sz = self.cfg.TEST.SEARCH_SIZE // self.cfg.MODEL.BACKBONE.STRIDE
         # motion constrain
@@ -66,6 +66,7 @@ class KMOSTrack(BaseTracker):
         # for save boxes from all queries
         self.save_all_boxes = params.save_all_boxes
         self.z_dict1 = {}
+        self.next = None
 
     def initialize(self, image, info: dict):
         # forward the template once
@@ -87,6 +88,7 @@ class KMOSTrack(BaseTracker):
 
         # save states
         self.state = info['init_bbox']
+        self.next=self.state
         self.frame_id = 0
         if self.save_all_boxes:
             '''save all predicted boxes'''
@@ -96,7 +98,7 @@ class KMOSTrack(BaseTracker):
     def track(self, image, info: dict = None):
         H, W, _ = image.shape
         self.frame_id += 1
-        x_patch_arr, resize_factor, x_amask_arr = sample_target(image, self.state, self.params.search_factor,
+        x_patch_arr, resize_factor, x_amask_arr = sample_target(image, self.next, self.params.search_factor,
                                                                 output_sz=self.params.search_size)  # (x1, y1, w, h)
         search = self.preprocessor.process(x_patch_arr, x_amask_arr)
 
@@ -117,6 +119,7 @@ class KMOSTrack(BaseTracker):
             dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
         # get the final box result
         detected_box = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
+        self.state = detected_box
 
         # Kalman Filter update
         self.kf.predict()
@@ -125,7 +128,9 @@ class KMOSTrack(BaseTracker):
         
         # Get Kalman filtered state and combine with original width and height
         kalman_state = self.kf.x[:2].flatten()  # [x, y]
-        self.state = [kalman_state[0], kalman_state[1], detected_box[2], detected_box[3]]
+        self.next = [kalman_state[0], kalman_state[1], detected_box[2], detected_box[3]]
+
+
 
         # for debug
         if self.debug:
