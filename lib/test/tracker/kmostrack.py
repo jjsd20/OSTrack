@@ -41,10 +41,10 @@ class KMOSTrack(BaseTracker):
             [1, 0, 0, 0],
             [0, 1, 0, 0]
         ])
-        self.kf.R *= 4.  # measurement noise
-        self.kf.P[2:, 2:] *= 1 # state uncertainty
+        self.kf.R *= 1.5  # measurement noise
+        self.kf.P[2:, 2:] *= 5 # state uncertainty
         self.kf.P *= 10.
-        self.kf.Q[2:, 2:] *= 0.5  # process noise
+        self.kf.Q[2:, 2:] *= 0.7  # process noise
 
         self.feat_sz = self.cfg.TEST.SEARCH_SIZE // self.cfg.MODEL.BACKBONE.STRIDE
         # motion constrain
@@ -119,25 +119,45 @@ class KMOSTrack(BaseTracker):
             dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
         # get the final box result
         detected_box = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
-        self.state = detected_box
-
-        # Kalman Filter update
+        # First: Kalman Filter prediction and update
         self.kf.predict()
         measurement = np.array([detected_box[0], detected_box[1]]).reshape(-1, 1)
         self.kf.update(measurement)
         
-        # Get Kalman filtered state and combine with original width and height
+        # Second: Use detection result as final output
+        self.state = detected_box
+        # Finally: Use Kalman filtered state for next frame search
         kalman_state = self.kf.x[:2].flatten()  # [x, y]
-        self.next = [kalman_state[0], kalman_state[1], detected_box[2], detected_box[3]]
+        self.next = [kalman_state[0], kalman_state[1], detected_box[2], detected_box[3]]  # Use Kalman filtered position with detected size
 
 
+        # #Save detection and Kalman results
+        # if not os.path.exists(self.save_dir):
+        #     os.makedirs(self.save_dir)
+        # gt=info['gt_bbox'].tolist()
+        # x0=gt[0]
+        # y0=gt[1]
+        # w0=gt[2]
+        # h0=gt[3]
+        # x1, y1, w, h = self.state
+        # #kx1, ky1 = kalman_state
+        # result_path = os.path.join(self.save_dir, "results_nkf.txt")
+        # with open(result_path, 'a') as f:
+        #     #f.write(f"{self.frame_id} {x0} {y0} {w0} {h0} ; {x1:.1f} {y1:.1f} ; {kx1:.1f} {ky1:.1f} {w:.1f} {h:.1f}\n")
+        #     f.write(f"{self.frame_id} {x0} {y0} {w0} {h0} ; {x1:.1f} {y1:.1f} {w:.1f} {h:.1f}\n")
 
         # for debug
         if self.debug:
             if not self.use_visdom:
+                # Draw detection result (red)
                 x1, y1, w, h = self.state
                 image_BGR = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
                 cv2.rectangle(image_BGR, (int(x1), int(y1)), (int(x1 + w), int(y1 + h)), color=(0, 0, 255), thickness=2)
+                
+                # Draw Kalman prediction (green)
+                kx1, ky1 = kalman_state
+                cv2.rectangle(image_BGR, (int(kx1), int(ky1)), (int(kx1 + w), int(ky1 + h)), color=(0, 255, 0), thickness=2)
+                
                 if not os.path.exists(self.save_dir):
                     os.makedirs(self.save_dir)
                 save_path = os.path.join(self.save_dir, "%04d.jpg" % self.frame_id)
