@@ -41,7 +41,7 @@ class KMOSTrack(BaseTracker):
             [1, 0, 0, 0],
             [0, 1, 0, 0]
         ])
-        self.kf.R *= 1.5  # measurement noise
+        self.kf.R *= 1.2  # measurement noise
         self.kf.P[2:, 2:] *= 5 # state uncertainty
         self.kf.P *= 10.
         self.kf.Q[2:, 2:] *= 1.7  # process noise
