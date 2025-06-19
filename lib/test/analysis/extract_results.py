@@ -146,6 +146,16 @@ def extract_results(trackers, dataset, report_name, skip_missing_seq=False, plot
                 pred_bb, anno_bb, seq.dataset, target_visible)
 
             avg_overlap_all[seq_id, trk_id] = err_overlap[valid_frame].mean()
+            # Save results to file
+            output_path = '{}_evaluation.txt'.format(base_results_path)
+            with open(output_path, 'w') as f:
+                f.write('Sequence: {}\n'.format(seq.name))
+                f.write('Tracker: {}\n'.format(trk.name))
+                f.write('Average Overlap: {}\n'.format(avg_overlap_all[seq_id, trk_id]))
+                f.write('Error Overlap: {}\n'.format(err_overlap.tolist()))
+                f.write('Error Center: {}\n'.format(err_center.tolist()))
+                f.write('Error Center Normalized: {}\n'.format(err_center_normalized.tolist()))
+                f.write('Valid Frame: {}\n'.format(valid_frame.tolist()))
 
             if exclude_invalid_frames:
                 seq_length = valid_frame.long().sum()
