@@ -41,10 +41,10 @@ class KMOSTrack(BaseTracker):
             [1, 0, 0, 0],
             [0, 1, 0, 0]
         ])
-        self.kf.R *= 1.2  # measurement noise
-        self.kf.P[2:, 2:] *= 5 # state uncertainty
-        self.kf.P *= 10.
-        self.kf.Q[2:, 2:] *= 1.7  # process noise
+        self.kf.R *= 1.15  # measurement noise
+        self.kf.P[2:, 2:] *= 1.1 # state uncertainty
+        self.kf.P *= 5.
+        self.kf.Q[2:, 2:] *= 4.00  # process noise
 
         self.feat_sz = self.cfg.TEST.SEARCH_SIZE // self.cfg.MODEL.BACKBONE.STRIDE
         # motion constrain
