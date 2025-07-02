@@ -172,3 +172,4 @@ pytracking/run_local.py
 /output/
 /pretrained_models/
 /tensorboard/
+*-results.json
