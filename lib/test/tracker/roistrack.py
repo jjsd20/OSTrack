@@ -47,6 +47,9 @@ class ROISTrack(BaseTracker):
         # for save boxes from all queries
         self.save_all_boxes = params.save_all_boxes
         self.z_dict1 = {}
+        self.lost = 0.0
+        self.search_factor = self.params.search_factor
+        self.refond =True
 
     def initialize(self, image, info: dict):
         # forward the template once
@@ -74,7 +77,7 @@ class ROISTrack(BaseTracker):
     def track(self, image, info: dict = None):
         H, W, _ = image.shape
         self.frame_id += 1
-        x_patch_arr, resize_factor, x_amask_arr = sample_target(image, self.state, self.params.search_factor,
+        x_patch_arr, resize_factor, x_amask_arr = sample_target(image, self.state, self.search_factor,
                                                                 output_sz=self.params.search_size)  # (x1, y1, w, h)
         search = self.preprocessor.process(x_patch_arr, x_amask_arr)
 
@@ -90,16 +93,53 @@ class ROISTrack(BaseTracker):
         response = self.output_window * pred_score_map
 
         # 新增：判断是否丢失
-        score_max = pred_score_map.max().item()
-        lost = score_max < 0.2  # 你可以根据实际情况调整阈值
+        # a = self.state[2]*self.state[3]/self.params.
 
-        pred_boxes = self.network.box_head.cal_bbox(response, out_dict['size_map'], out_dict['offset_map'])
-        pred_boxes = pred_boxes.view(-1, 4)
-        # Baseline: Take the mean of all pred boxes as the final result
-        pred_box = (pred_boxes.mean(
-            dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
-        # get the final box result
-        self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
+        score_max = pred_score_map.max().item()
+        lost_threshold = 0.35
+
+        if score_max > lost_threshold and self.refond == True:
+            pred_boxes = self.network.box_head.cal_bbox(response, out_dict['size_map'], out_dict['offset_map'])
+            pred_boxes = pred_boxes.view(-1, 4)
+            # Baseline: Take the mean of all pred boxes as the final result
+            pred_box = (pred_boxes.mean(
+                dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
+            # get the final box result
+            self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
+            self.refond = False
+            self.lost = 0.0
+        elif score_max > lost_threshold and self.refond == False:
+            pred_boxes = self.network.box_head.cal_bbox(response, out_dict['size_map'], out_dict['offset_map'])
+            pred_boxes = pred_boxes.view(-1, 4)
+            # Baseline: Take the mean of all pred boxes as the final result
+            pred_box = (pred_boxes.mean(
+                dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
+            # get the final box result
+            self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
+            self.refond = False
+            self.lost = self.lost - 0.01
+
+        else:
+            self.lost += 1
+            self.refond = True
+
+        if self.lost <= -1.0 : #连续100不丢失
+            self.search_factor = 3
+        elif self.lost <= -0.5 :#连续50不丢失
+            self.search_factor = 3.5
+        elif self.lost <= -0.25:#
+            self.search_factor = 3.75
+        elif self.lost <= -0.1:#
+            self.search_factor = 3.9
+        elif self.lost <= 0.0:
+            self.search_factor = 4.0
+        elif self.lost <= 10:
+            self.search_factor = 6.0
+        elif self.lost <= 50:
+            self.search_factor = 8.0
+        else:
+            self.search_factor = self.params.search_factor
+
         #
         # # Save detection and Kalman results
         # self.save_dir = "debug"
