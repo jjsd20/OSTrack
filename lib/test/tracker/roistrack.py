@@ -51,6 +51,12 @@ class ROISTrack(BaseTracker):
         self.search_factor = self.params.search_factor
         self.refond =True
 
+        self.last_valid_state = []
+        self.last_valid_score = 0.0
+        self.last_in_border = False
+        self.lost_type = None  # 重置丢失类型
+
+
     def initialize(self, image, info: dict):
         # forward the template once
         z_patch_arr, resize_factor, z_amask_arr = sample_target(image, info['init_bbox'], self.params.template_factor,
@@ -91,70 +97,81 @@ class ROISTrack(BaseTracker):
         # add hann windows
         pred_score_map = out_dict['score_map']
         response = self.output_window * pred_score_map
-
-        # 新增：判断是否丢失
-        # a = self.state[2]*self.state[3]/self.params.
+        def update(response,out_dict):
+            pred_boxes = self.network.box_head.cal_bbox(response, out_dict['size_map'], out_dict['offset_map'])
+            pred_boxes = pred_boxes.view(-1, 4)
+            # Baseline: Take the mean of all pred boxes as the final result
+            pred_box = (pred_boxes.mean(
+                dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
+            # get the final box result
+            self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
 
         score_max = pred_score_map.max().item()
-        lost_threshold = 0.35
+        lost_threshold = 0.375
+
+        border_threshold = 0.01 * min(H, W)
 
         if score_max > lost_threshold and self.refond == True:
-            pred_boxes = self.network.box_head.cal_bbox(response, out_dict['size_map'], out_dict['offset_map'])
-            pred_boxes = pred_boxes.view(-1, 4)
-            # Baseline: Take the mean of all pred boxes as the final result
-            pred_box = (pred_boxes.mean(
-                dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
-            # get the final box result
-            self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
+            update(response, out_dict)
+            # 新增：记录最后成功跟踪的位置和状态
+            self.last_valid_state = self.state.copy()
+            self.last_valid_score = score_max
+            self.last_in_border = self._is_near_border(self.state, H, W, border_threshold)
+
             self.refond = False
             self.lost = 0.0
+            self.lost_type = None  # 重置丢失类型
         elif score_max > lost_threshold and self.refond == False:
-            pred_boxes = self.network.box_head.cal_bbox(response, out_dict['size_map'], out_dict['offset_map'])
-            pred_boxes = pred_boxes.view(-1, 4)
-            # Baseline: Take the mean of all pred boxes as the final result
-            pred_box = (pred_boxes.mean(
-                dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
-            # get the final box result
-            self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
+            update(response, out_dict)
+
+            # 新增：记录最后成功跟踪的位置和状态
+            self.last_valid_state = self.state.copy()
+            self.last_valid_score = score_max
+            self.last_in_border = self._is_near_border(self.state, H, W, border_threshold)
+
             self.refond = False
             self.lost = self.lost - 0.01
-
+            self.lost_type = None  # 重置丢失类型
         else:
-            self.lost += 1
-            self.refond = True
+            if self.refond == False :
+                self.search_factor = 4.0
+                self.lost = 0.0
+                self.refond = True
+                # 新增：判断丢失类型
+                if hasattr(self, 'last_in_border') and self.last_in_border:
+                    self.lost_type = "out_of_view"  # 在视野边缘丢失，推测移出视野
+                else:
+                    self.lost_type = "in_view"  # 在视野内部丢失
+                # 记录丢失时的信息
+                self.lost_frame = self.frame_id
+                self.lost_score = score_max
+            else:
+                self.lost += 1
+                self.refond = True
+
 
         if self.lost <= -1.0 : #连续100不丢失
-            self.search_factor = 3
+            self.search_factor = 3.1875
         elif self.lost <= -0.5 :#连续50不丢失
             self.search_factor = 3.5
         elif self.lost <= -0.25:#
             self.search_factor = 3.75
         elif self.lost <= -0.1:#
             self.search_factor = 3.9
-        elif self.lost <= 0.0:
+        elif self.lost <= 0.0 or self.lost <10:
             self.search_factor = 4.0
-        elif self.lost <= 10:
+            if self.lost % 2 == 0 and self.lost_type == "in_view":  # 在视野内部丢失:
+                update(response, out_dict)
+        elif self.lost >= 10 and self.lost <= 50 :
+            self.search_factor +=0.05
+            if self.lost % 2 == 0 and self.lost_type == "in_view":
+                update(response, out_dict)
+        elif self.lost >= 50 and self.lost_type == "in_view":
             self.search_factor = 6.0
-        elif self.lost <= 50:
-            self.search_factor = 8.0
+            if self.lost % 5 == 0 :
+                update(response, out_dict)
         else:
             self.search_factor = self.params.search_factor
-
-        #
-        # # Save detection and Kalman results
-        # self.save_dir = "debug"
-        # if not os.path.exists(self.save_dir):
-        #     os.makedirs(self.save_dir)
-        # gt=info['gt_bbox'].tolist()
-        # x0=gt[0]
-        # y0=gt[1]
-        # w0=gt[2]
-        # h0=gt[3]
-        # x1, y1, w, h = self.state
-        # result_path = os.path.join(self.save_dir, "results.txt")
-        # with open(result_path, 'a') as f:
-        #     f.write(f"{self.frame_id} {x0} {y0} {w0} {h0} ; {x1:.1f} {y1:.1f} {w:.1f} {h:.1f}; \n")
-
         # for debug
         if self.debug:
             if not self.use_visdom:
@@ -184,12 +201,17 @@ class ROISTrack(BaseTracker):
 
         if self.save_all_boxes:
             '''save all predictions'''
-            all_boxes = self.map_box_back_batch(pred_boxes * self.params.search_size / resize_factor, resize_factor)
+            all_boxes = self.map_box_back_batch(0 * self.params.search_size / resize_factor, resize_factor)
             all_boxes_save = all_boxes.view(-1).tolist()  # (4N, )
             return {"target_bbox": self.state,
                     "all_boxes": all_boxes_save}
         else:
             return {"target_bbox": self.state}
+    def _is_near_border(self, box, H, W, threshold):
+        """判断框是否靠近图像边界"""
+        x, y, w, h = box
+        return (x < threshold or y < threshold or
+                (x + w) > (W - threshold) or (y + h) > (H - threshold))
 
     def map_box_back(self, pred_box: list, resize_factor: float):
         cx_prev, cy_prev = self.state[0] + 0.5 * self.state[2], self.state[1] + 0.5 * self.state[3]
