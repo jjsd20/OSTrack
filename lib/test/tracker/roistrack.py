@@ -160,15 +160,15 @@ class ROISTrack(BaseTracker):
             self.search_factor = 3.9
         elif self.lost <= 0.0 or self.lost <10:
             self.search_factor = 4.0
-            if self.lost % 2 == 0 and self.lost_type == "in_view":  # 在视野内部丢失:
+            if  self.lost_type == "in_view":  # 在视野内部丢失:
                 update(response, out_dict)
         elif self.lost >= 10 and self.lost <= 50 :
             self.search_factor +=0.05
-            if self.lost % 2 == 0 and self.lost_type == "in_view":
+            if self.lost_type == "in_view":
                 update(response, out_dict)
-        elif self.lost >= 50 and self.lost_type == "in_view":
+        elif self.lost >= 50 :
             self.search_factor = 6.0
-            if self.lost % 5 == 0 :
+            if  self.lost_type == "in_view":
                 update(response, out_dict)
         else:
             self.search_factor = self.params.search_factor
