@@ -149,7 +149,6 @@ class ROISTrack(BaseTracker):
                 self.lost += 1
                 self.refond = True
 
-
         if self.lost <= -1.0 : #连续100不丢失
             self.search_factor = 3.1875
         elif self.lost <= -0.5 :#连续50不丢失
@@ -162,16 +161,21 @@ class ROISTrack(BaseTracker):
             self.search_factor = 4.0
             if  self.lost_type == "in_view":  # 在视野内部丢失:
                 update(response, out_dict)
-        elif self.lost >= 10 and self.lost <= 50 :
-            self.search_factor +=0.05
+        elif self.lost >= 10 and self.lost <= 20 :
+            self.search_factor +=0.15
             if self.lost_type == "in_view":
                 update(response, out_dict)
+        elif self.lost >= 20 and self.lost <= 50 :
+            self.search_factor += 0.05
+            update(response, out_dict)
         elif self.lost >= 50 :
             self.search_factor = 6.0
-            if  self.lost_type == "in_view":
-                update(response, out_dict)
+            update(response, out_dict)
         else:
             self.search_factor = self.params.search_factor
+        if self.state == [0,0,W,H]:
+            self.search_factor = 1.0
+            self.lost =0
         # for debug
         if self.debug:
             if not self.use_visdom:
