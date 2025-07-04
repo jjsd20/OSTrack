@@ -149,14 +149,14 @@ class ROISTrack(BaseTracker):
                 self.lost += 1
                 self.refond = True
 
-        if self.lost <= -1.0 : #连续100不丢失
+        if self.lost <= -4.0 : #连续300不丢失
             self.search_factor = 3.1875
-        elif self.lost <= -0.5 :#连续50不丢失
+        elif self.lost <= -2.0 :#连续200不丢失
             self.search_factor = 3.5
-        elif self.lost <= -0.25:#
+        elif self.lost <= -1.5:#
             self.search_factor = 3.75
-        elif self.lost <= -0.1:#
-            self.search_factor = 3.9
+        elif self.lost <= -1.0 : self.search_factor = 3.825
+        elif self.lost <= -0.5:  self.search_factor = 3.9
         elif self.lost <= 0.0 or self.lost <10:
             self.search_factor = 4.0
             if  self.lost_type == "in_view":  # 在视野内部丢失:
@@ -174,8 +174,24 @@ class ROISTrack(BaseTracker):
         else:
             self.search_factor = self.params.search_factor
         if self.state == [0,0,W,H]:
-            self.search_factor = 1.0
+            self.search_factor = 0.8
             self.lost =0
+        #
+        # # update the template
+        # self.num_template=2
+        # self.update_threshold=0.55
+        # self.update_intervals=450
+        #
+        # if self.num_template > 1:
+        #     conf_score = out_dict['confidence'].sum().item() * 10 # the confidence score
+        #     if (self.frame_id % self.update_intervals == 0) and (conf_score > self.update_threshold) and (pred_score_map.max().item()>0.80 and response.max().item()>0.85):
+        #         z_patch_arr, _ = sample_target(image, self.state, self.params.template_factor,
+        #                                        output_sz=self.params.template_size)
+        #         template = self.preprocessor.process(z_patch_arr)
+        #         self.template_list.append(template)
+        #         if len(self.template_list) > self.num_template:
+        #             self.template_list.pop(1)
+        #             self.z_dict1 = self.template_list[0]
         # for debug
         if self.debug:
             if not self.use_visdom:
