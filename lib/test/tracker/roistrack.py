@@ -149,14 +149,17 @@ class ROISTrack(BaseTracker):
                 self.lost += 1
                 self.refond = True
 
-        if self.lost <= -4.0 : #连续300不丢失
-            self.search_factor = 3.1875
+        if self.lost <= -4.0 : #连续300不丢失;3.1875
+            self.search_factor = 3.15
+        elif self.lost <= -3.0 :#连续250不丢失
+            self.search_factor = 3.25
         elif self.lost <= -2.0 :#连续200不丢失
             self.search_factor = 3.5
-        elif self.lost <= -1.5:#
-            self.search_factor = 3.75
-        elif self.lost <= -1.0 : self.search_factor = 3.825
-        elif self.lost <= -0.5:  self.search_factor = 3.9
+        elif self.lost <= -1.5  :self.search_factor = 3.6
+        elif self.lost <= -1.0  :self.search_factor = 3.7
+        elif self.lost <= -0.75 :self.search_factor = 3.8
+        elif self.lost <= -0.5  :self.search_factor = 3.85
+        elif self.lost <= -0.25 :self.search_factor = 3.9
         elif self.lost <= 0.0 or self.lost <10:
             self.search_factor = 4.0
             if  self.lost_type == "in_view":  # 在视野内部丢失:
