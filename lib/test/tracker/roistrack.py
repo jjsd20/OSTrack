@@ -55,6 +55,7 @@ class ROISTrack(BaseTracker):
         self.last_valid_score = 0.0
         self.last_in_border = False
         self.lost_type = None  # 重置丢失类型
+        self.collecting_templates=False
 
 
     def initialize(self, image, info: dict):
@@ -107,9 +108,9 @@ class ROISTrack(BaseTracker):
             self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
 
         score_max = pred_score_map.max().item()
-        lost_threshold = 0.375
+        lost_threshold = 0.385
 
-        border_threshold = 0.01 * min(H, W)
+        border_threshold = 0.003 * min(H, W)
 
         if score_max > lost_threshold and self.refond == True:
             update(response, out_dict)
@@ -150,7 +151,7 @@ class ROISTrack(BaseTracker):
                 self.refond = True
 
         if self.lost <= -4.0 : #连续300不丢失;3.1875
-            self.search_factor = 3.15
+            self.search_factor = 3.165
         elif self.lost <= -3.0 :#连续250不丢失
             self.search_factor = 3.25
         elif self.lost <= -2.0 :#连续200不丢失
@@ -159,7 +160,7 @@ class ROISTrack(BaseTracker):
         elif self.lost <= -1.0  :self.search_factor = 3.7
         elif self.lost <= -0.75 :self.search_factor = 3.8
         elif self.lost <= -0.5  :self.search_factor = 3.85
-        elif self.lost <= -0.25 :self.search_factor = 3.9
+        elif self.lost <= -0.3 :self.search_factor = 3.9
         elif self.lost <= 0.0 or self.lost <10:
             self.search_factor = 4.0
             if  self.lost_type == "in_view":  # 在视野内部丢失:
@@ -179,22 +180,40 @@ class ROISTrack(BaseTracker):
         if self.state == [0,0,W,H]:
             self.search_factor = 0.8
             self.lost =0
-        #
-        # # update the template
-        # self.num_template=2
-        # self.update_threshold=0.55
-        # self.update_intervals=450
-        #
+
+        # update the template
+        self.num_template=2
+        self.update_threshold=1.2
+        self.update_intervals=250
+
+        if self.frame_id % self.update_intervals == 0:
+            # 触发模板采集
+            self.collecting_templates = True
+            self.templates_collected = 0
+            self.template_bank = []
+
+        # 如果处于模板采集状态，则采集当前帧模板
+        if self.collecting_templates:
+            self.collect_current_frame_template(image, initial_score=pred_score_map.max().item(), hann_score=response.max().item())
+            # 检查是否完成采集
+            if self.templates_collected >= 20:
+                self.select_and_update_template(initial_score_threshold=0.87, hann_score_threshold=0.86)
+                self.collecting_templates = False
+
         # if self.num_template > 1:
-        #     conf_score = out_dict['confidence'].sum().item() * 10 # the confidence score
-        #     if (self.frame_id % self.update_intervals == 0) and (conf_score > self.update_threshold) and (pred_score_map.max().item()>0.80 and response.max().item()>0.85):
-        #         z_patch_arr, _ = sample_target(image, self.state, self.params.template_factor,
+        #     conf_score = out_dict['score_map'].sum().item() # the confidence score
+        #     if (self.frame_id % self.update_intervals == 0) and (conf_score > self.update_threshold) and (pred_score_map.max().item()>0.87 and response.max().item()>0.87):
+        #         z_patch_arr, _,z_amask_arr = sample_target(image, self.state, self.params.template_factor,
         #                                        output_sz=self.params.template_size)
-        #         template = self.preprocessor.process(z_patch_arr)
-        #         self.template_list.append(template)
-        #         if len(self.template_list) > self.num_template:
-        #             self.template_list.pop(1)
-        #             self.z_dict1 = self.template_list[0]
+        #         template = self.preprocessor.process(z_patch_arr,z_amask_arr)
+        #         self.z_patch_arr = z_patch_arr
+        #         self.z_dict1 = template
+        #         self.box_mask_z = None
+        #         if self.cfg.MODEL.BACKBONE.CE_LOC:
+        #             template_bbox = self.transform_bbox_to_crop(self.state, resize_factor,
+        #                                                         template.tensors.device).squeeze(1)
+        #             self.box_mask_z = generate_mask_cond(self.cfg, 1, template.tensors.device, template_bbox)
+
         # for debug
         if self.debug:
             if not self.use_visdom:
@@ -234,7 +253,37 @@ class ROISTrack(BaseTracker):
         """判断框是否靠近图像边界"""
         x, y, w, h = box
         return (x < threshold or y < threshold or
-                (x + w) > (W - threshold) or (y + h) > (H - threshold))
+                (x+W/4 ) > (W - threshold) or (y+H/4 ) > (H - threshold))
+
+    def collect_current_frame_template(self, image, initial_score=0.0, hann_score=0.0):
+        """采集当前帧的模板"""
+        # 提取模板
+
+        z_patch_arr, _, z_amask_arr = sample_target(image, self.state, self.params.template_factor,
+                                                    output_sz=self.params.template_size)
+
+        # 存储模板和得分
+        self.template_bank.append((z_patch_arr, initial_score, hann_score,z_amask_arr))
+        self.templates_collected += 1
+
+    def select_and_update_template(self,initial_score_threshold, hann_score_threshold):
+        """筛选并选择最优模板"""
+        # 筛选合格模板
+        valid_templates = [t for t in self.template_bank if t[1] > initial_score_threshold and t[2] > hann_score_threshold]
+
+        # 如果合格模板数量足够，选择最优模板
+        if len(valid_templates) >= 5:
+            # 按Hanning得分排序
+            sorted_templates = sorted(valid_templates, key=lambda x: x[2], reverse=True)
+            best_template = sorted_templates[0]
+
+            # 更新当前模板
+            self.z_patch_arr = best_template[0]  # 更新模板
+            z_amask_arr = best_template[3]  # 更新模板掩码
+            template = self.preprocessor.process(self.z_patch_arr, z_amask_arr)
+            self.z_dict1 = template
+
+
 
     def map_box_back(self, pred_box: list, resize_factor: float):
         cx_prev, cy_prev = self.state[0] + 0.5 * self.state[2], self.state[1] + 0.5 * self.state[3]
