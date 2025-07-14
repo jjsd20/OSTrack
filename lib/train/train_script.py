@@ -11,8 +11,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from .base_functions import *
 # network related
 from lib.models.ostrack import build_ostrack
+from lib.models.cvtostrack import build_cvtostrack
 # forward propagation related
-from lib.train.actors import OSTrackActor
+from lib.train.actors import OSTrackActor, CVTOSTrackActor
 # for import modules
 import importlib
 
@@ -53,6 +54,8 @@ def run(settings):
     # Create network
     if settings.script_name == "ostrack":
         net = build_ostrack(cfg)
+    elif settings.script_name == "cvtostrack":
+        net = build_cvtostrack(cfg)
     else:
         raise ValueError("illegal script name")
 
@@ -73,6 +76,13 @@ def run(settings):
         objective = {'giou': giou_loss, 'l1': l1_loss, 'focal': focal_loss, 'cls': BCEWithLogitsLoss()}
         loss_weight = {'giou': cfg.TRAIN.GIOU_WEIGHT, 'l1': cfg.TRAIN.L1_WEIGHT, 'focal': 1., 'cls': 1.0}
         actor = OSTrackActor(net=net, objective=objective, loss_weight=loss_weight, settings=settings, cfg=cfg)
+    elif settings.script_name == "cvtostrack":
+        focal_loss = FocalLoss()
+        objective = {'giou': giou_loss, 'l1': l1_loss, 'focal': focal_loss, 'cls': BCEWithLogitsLoss()}
+        loss_weight = {'giou': cfg.TRAIN.GIOU_WEIGHT, 'l1': cfg.TRAIN.L1_WEIGHT, 'focal': 1., 'cls': 1.0}
+        actor = CVTOSTrackActor(net=net, objective=objective, loss_weight=loss_weight, settings=settings, cfg=cfg)
+
+
     else:
         raise ValueError("illegal script name")
 
