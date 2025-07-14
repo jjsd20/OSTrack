@@ -28,6 +28,9 @@ def generate_mask_cond(cfg, bs, device, gt_bbox):
             index = slice(3, 4)
         elif template_feat_size == 14:
             index = slice(6, 7)
+        elif template_feat_size == 16:
+            index = slice(7, 8)
+
         else:
             raise NotImplementedError
         box_mask_z = torch.zeros([bs, template_feat_size, template_feat_size], device=device)

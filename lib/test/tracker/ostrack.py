@@ -94,6 +94,20 @@ class OSTrack(BaseTracker):
             dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
         # get the final box result
         self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
+        #
+        # # Save detection and Kalman results
+        # self.save_dir = "debug"
+        # if not os.path.exists(self.save_dir):
+        #     os.makedirs(self.save_dir)
+        # gt=info['gt_bbox'].tolist()
+        # x0=gt[0]
+        # y0=gt[1]
+        # w0=gt[2]
+        # h0=gt[3]
+        # x1, y1, w, h = self.state
+        # result_path = os.path.join(self.save_dir, "results.txt")
+        # with open(result_path, 'a') as f:
+        #     f.write(f"{self.frame_id} {x0} {y0} {w0} {h0} ; {x1:.1f} {y1:.1f} {w:.1f} {h:.1f}; \n")
 
         # for debug
         if self.debug:

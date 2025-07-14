@@ -49,7 +49,7 @@ class OSTrack(nn.Module):
                                     return_last_attn=return_last_attn, )
 
         # Forward head
-        feat_last = x
+        feat_last = x#(b,320,768)
         if isinstance(x, list):
             feat_last = x[-1]
         out = self.forward_head(feat_last, None)

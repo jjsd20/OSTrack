@@ -122,7 +122,7 @@ class ROISTrack(BaseTracker):
             self.refond = False
             self.lost = 0.0
             self.lost_type = None  # 重置丢失类型
-        elif score_max > lost_threshold and self.refond == False:
+        elif score_max > lost_threshold  and self.refond == False:
             update(response, out_dict)
 
             # 新增：记录最后成功跟踪的位置和状态
@@ -181,12 +181,10 @@ class ROISTrack(BaseTracker):
             self.search_factor = 0.8
             self.lost =0
 
-        # update the template
-        self.num_template=2
         self.update_threshold=1.2
-        self.update_intervals=250
+        self.update_intervals=200#290
 
-        if self.frame_id % self.update_intervals == 0:
+        if self.frame_id % self.update_intervals == 0 or self.frame_id <= 5:
             # 触发模板采集
             self.collecting_templates = True
             self.templates_collected = 0
@@ -196,23 +194,9 @@ class ROISTrack(BaseTracker):
         if self.collecting_templates:
             self.collect_current_frame_template(image, initial_score=pred_score_map.max().item(), hann_score=response.max().item())
             # 检查是否完成采集
-            if self.templates_collected >= 20:
-                self.select_and_update_template(initial_score_threshold=0.87, hann_score_threshold=0.86)
+            if self.templates_collected >= 20 or (self.templates_collected >= 5 and self.frame_id <20):
+                self.select_and_update_template(initial_score_threshold=0.866, hann_score_threshold=0.851)
                 self.collecting_templates = False
-
-        # if self.num_template > 1:
-        #     conf_score = out_dict['score_map'].sum().item() # the confidence score
-        #     if (self.frame_id % self.update_intervals == 0) and (conf_score > self.update_threshold) and (pred_score_map.max().item()>0.87 and response.max().item()>0.87):
-        #         z_patch_arr, _,z_amask_arr = sample_target(image, self.state, self.params.template_factor,
-        #                                        output_sz=self.params.template_size)
-        #         template = self.preprocessor.process(z_patch_arr,z_amask_arr)
-        #         self.z_patch_arr = z_patch_arr
-        #         self.z_dict1 = template
-        #         self.box_mask_z = None
-        #         if self.cfg.MODEL.BACKBONE.CE_LOC:
-        #             template_bbox = self.transform_bbox_to_crop(self.state, resize_factor,
-        #                                                         template.tensors.device).squeeze(1)
-        #             self.box_mask_z = generate_mask_cond(self.cfg, 1, template.tensors.device, template_bbox)
 
         # for debug
         if self.debug:
@@ -263,23 +247,40 @@ class ROISTrack(BaseTracker):
                                                     output_sz=self.params.template_size)
 
         # 存储模板和得分
-        self.template_bank.append((z_patch_arr, initial_score, hann_score,z_amask_arr))
+        self.template_bank.append((self.frame_id,z_patch_arr, initial_score, hann_score,z_amask_arr))
         self.templates_collected += 1
 
     def select_and_update_template(self,initial_score_threshold, hann_score_threshold):
         """筛选并选择最优模板"""
         # 筛选合格模板
-        valid_templates = [t for t in self.template_bank if t[1] > initial_score_threshold and t[2] > hann_score_threshold]
+        valid_templates = [t for t in self.template_bank if t[2] > initial_score_threshold and t[3] > hann_score_threshold]
 
         # 如果合格模板数量足够，选择最优模板
-        if len(valid_templates) >= 5:
-            # 按Hanning得分排序
+        if len(valid_templates) >= 5 or (self.frame_id<=20 and len(valid_templates) >= 2):
+            # 按初始得分排序
             sorted_templates = sorted(valid_templates, key=lambda x: x[2], reverse=True)
-            best_template = sorted_templates[0]
+            # 按Hann得分排序
+            hann_sorted = sorted(valid_templates, key=lambda x: x[3], reverse=True)
+
+            top_initial = sorted_templates[:3]
+            top_hann = hann_sorted[:3]
+
+            # 查找同时在两个列表中的模板
+            candidates = []
+            for t in top_initial:
+                if t in top_hann:
+                    # 计算综合得分（这里使用乘积，确保两者都高）
+                    combined_score = t[2] * t[3]
+                    candidates.append((t[0], t[1], t[2], t[3],t[4],combined_score))
+            #best_template = sorted_templates[0]
+            if candidates:
+                best_template = sorted(candidates, key=lambda x: x[5], reverse=True)[0]
+            else:
+                best_template = hann_sorted[0]
 
             # 更新当前模板
-            self.z_patch_arr = best_template[0]  # 更新模板
-            z_amask_arr = best_template[3]  # 更新模板掩码
+            self.z_patch_arr = best_template[1]  # 更新模板
+            z_amask_arr = best_template[4]  # 更新模板掩码
             template = self.preprocessor.process(self.z_patch_arr, z_amask_arr)
             self.z_dict1 = template
 

@@ -9,8 +9,8 @@ if prj_path not in sys.path:
 from lib.test.evaluation import get_dataset
 from lib.test.evaluation.running import run_dataset
 from lib.test.evaluation.tracker import Tracker
-
-#python tracking/test.py kmostrack vitb_256_mae_ce_96x1_ep300-t2 --dataset lasot --threads 0 --num_gpus 1 --debug 1 --sequence yoyo-17
+#python -m visdom.server -port 8097
+#python tracking/test.py kmostrack vitb_256_mae_ces_96x1_ep300-t2 --dataset lasot --threads 0 --num_gpus 1 --debug 1 --sequence yoyo-17
 #python tracking/test.py ostrack vitb_256_mae_ce_96x1_ep300 --dataset lasot --threads 0 --num_gpus 1 --debug 1 --sequence yoyo-17
 
 def run_tracker(tracker_name, tracker_param, run_id=None, dataset_name='otb', sequence=None, debug=0, threads=0,
