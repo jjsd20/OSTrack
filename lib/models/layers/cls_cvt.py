@@ -191,13 +191,13 @@ class Attention(nn.Module):
 
         return q, k, v
 
-    def forward(self, x, h, w, token_lens=None):
+    def forward(self, x, hz,wz,h, w, token_lens=None):
         # 支持两张图片token拼接输入，qkv分别用forward_conv再拼接
         if token_lens is not None:
-            N1, N2 = h*w,h*w
+            N1, N2 = hz*wz,h*w
             x1, x2 = torch.split(x, [N1, N2], dim=1)  # [b, N1, C], [b, N2, C]
             # 分别用forward_conv
-            q1, k1, v1 = self.forward_conv(x1, h, w)
+            q1, k1, v1 = self.forward_conv(x1, hz, wz)
             q2, k2, v2 = self.forward_conv(x2, h, w)
             q = torch.cat([q1, q2], dim=1)
             k = torch.cat([k1, k2], dim=1)
@@ -327,11 +327,11 @@ class Block(nn.Module):
             drop=drop
         )
 
-    def forward(self, x, h, w):
+    def forward(self, x, hz,wz,h, w):
         res = x
 
         x = self.norm1(x)#[b,8192,64]
-        attn = self.attn(x, h, w,token_lens=[h*w,h*w])
+        attn = self.attn(x, hz,wz,h, w,token_lens=[hz*wz,h*w])
         x = res + self.drop_path(attn)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
 
@@ -485,9 +485,10 @@ class VisionTransformer(nn.Module):
             x = self.patch_embed(x)
             z = self.patch_embed(z)
             B, C, H, W = x.size()
+            _,_, H_z, W_z = z.size()
             x = rearrange(x, 'b c h w -> b (h w) c')#b,64,64,64->b,4096,64
             z = rearrange(z, 'b c h w -> b (h w) c')
-            tokens = torch.cat([z, x], dim=1)#[b,8192,64]
+            tokens = torch.cat([z, x], dim=1)#[b,1024+4096,64]
         else:
             x = self.patch_embed(x)
             B, C, H, W = x.size()
@@ -496,15 +497,15 @@ class VisionTransformer(nn.Module):
             cls_tokens = self.cls_token.expand(B, -1, -1)
             tokens = torch.cat((cls_tokens, tokens), dim=1)
 
-        tokens = self.pos_drop(tokens)#[b,8192,64]
+        tokens = self.pos_drop(tokens)#[b,5120,64]
 
         for blk in self.blocks:
-            tokens = blk(tokens, H, W)
+            tokens = blk(tokens,H_z,W_z, H, W)
         if self.cls_token is not None:
-            cls_tokens, tokens_z, tokens_x = torch.split(tokens, [1, H*W,H*W], 1)
+            cls_tokens, tokens_z, tokens_x = torch.split(tokens, [1, H_z*W_z,H*W], 1)
         else:
-            tokens_z, tokens_x = torch.split(tokens, [H*W, H*W], 1)
-        tokens_z = rearrange(tokens_z, 'b (h w) c -> b c h w', h=H, w=W)
+            tokens_z, tokens_x = torch.split(tokens, [H_z*W_z, H*W], 1)
+        tokens_z = rearrange(tokens_z, 'b (h w) c -> b c h w', h=H_z, w=W_z)
         tokens_x = rearrange(tokens_x, 'b (h w) c -> b c h w', h=H, w=W)
 
         return tokens_z, tokens_x, cls_tokens if self.cls_token is not None else None
@@ -630,7 +631,7 @@ class ConvolutionalVisionTransformer(nn.Module):
         # z, x: [B, C, H, W]
         for i in range(self.num_stages):
             stage = getattr(self, f'stage{i}')
-            z,x, cls_tokens = stage(z, x)
+            z,x, cls_tokens = stage(z=z, x=x)
             # 只用z作为下一stage输入，x已融合到z
             
         if self.cls_token:
