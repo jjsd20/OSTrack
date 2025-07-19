@@ -245,16 +245,13 @@ class ROISTrack(BaseTracker):
 
         z_patch_arr, _, z_amask_arr = sample_target(image, self.state, self.params.template_factor,
                                                     output_sz=self.params.template_size)
-
         # 存储模板和得分
         self.template_bank.append((self.frame_id,z_patch_arr, initial_score, hann_score,z_amask_arr))
         self.templates_collected += 1
-
     def select_and_update_template(self,initial_score_threshold, hann_score_threshold):
         """筛选并选择最优模板"""
         # 筛选合格模板
         valid_templates = [t for t in self.template_bank if t[2] > initial_score_threshold and t[3] > hann_score_threshold]
-
         # 如果合格模板数量足够，选择最优模板
         if len(valid_templates) >= 5 or (self.frame_id<=20 and len(valid_templates) >= 2):
             # 按初始得分排序
@@ -277,7 +274,6 @@ class ROISTrack(BaseTracker):
                 best_template = sorted(candidates, key=lambda x: x[5], reverse=True)[0]
             else:
                 best_template = hann_sorted[0]
-
             # 更新当前模板
             self.z_patch_arr = best_template[1]  # 更新模板
             z_amask_arr = best_template[4]  # 更新模板掩码
