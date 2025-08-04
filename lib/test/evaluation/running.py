@@ -154,8 +154,8 @@ def run_sequence(seq: Sequence, tracker: Tracker, debug=False, num_gpu=8):
 
     if not debug:
         _save_tracker_output(seq, tracker, output)
-    if tracker.name =='kmostrack':
-        _save_tracker_output(seq, tracker, output)
+    # if tracker.name =='roistrack':
+    #     _save_tracker_output(seq, tracker, output)
 
 
 def run_dataset(dataset, trackers, debug=False, threads=0, num_gpus=8):

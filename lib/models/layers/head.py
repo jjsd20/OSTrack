@@ -179,18 +179,18 @@ class CenterPredictor(nn.Module, ):
             return y
 
         # ctr branch
-        x_ctr1 = self.conv1_ctr(x)
-        x_ctr2 = self.conv2_ctr(x_ctr1)
-        x_ctr3 = self.conv3_ctr(x_ctr2)
-        x_ctr4 = self.conv4_ctr(x_ctr3)
-        score_map_ctr = self.conv5_ctr(x_ctr4)
+        x_ctr1 = self.conv1_ctr(x)#[b, 256, 16, 16]
+        x_ctr2 = self.conv2_ctr(x_ctr1)#[b, 128, 16, 16]
+        x_ctr3 = self.conv3_ctr(x_ctr2)#[b, 64, 16, 16]
+        x_ctr4 = self.conv4_ctr(x_ctr3)#[b, 32, 16, 16]
+        score_map_ctr = self.conv5_ctr(x_ctr4)#[b, 1, 16, 16]
 
         # offset branch
         x_offset1 = self.conv1_offset(x)
         x_offset2 = self.conv2_offset(x_offset1)
         x_offset3 = self.conv3_offset(x_offset2)
         x_offset4 = self.conv4_offset(x_offset3)
-        score_map_offset = self.conv5_offset(x_offset4)
+        score_map_offset = self.conv5_offset(x_offset4)#[b,2,16,16]
 
         # size branch
         x_size1 = self.conv1_size(x)

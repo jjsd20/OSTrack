@@ -12,8 +12,9 @@ from .base_functions import *
 # network related
 from lib.models.ostrack import build_ostrack
 from lib.models.cvtostrack import build_cvtostrack
+from lib.models.timostrack import build_timostrack
 # forward propagation related
-from lib.train.actors import OSTrackActor, CVTOSTrackActor
+from lib.train.actors import OSTrackActor, CVTOSTrackActor,TIMOSTrackActor
 # for import modules
 import importlib
 
@@ -56,6 +57,8 @@ def run(settings):
         net = build_ostrack(cfg)
     elif settings.script_name == "cvtostrack":
         net = build_cvtostrack(cfg)
+    elif settings.script_name == "timostrack":
+        net = build_timostrack(cfg)
     else:
         raise ValueError("illegal script name")
 
@@ -81,8 +84,11 @@ def run(settings):
         objective = {'giou': giou_loss, 'l1': l1_loss, 'focal': focal_loss, 'cls': BCEWithLogitsLoss()}
         loss_weight = {'giou': cfg.TRAIN.GIOU_WEIGHT, 'l1': cfg.TRAIN.L1_WEIGHT, 'focal': 1., 'cls': 1.0}
         actor = CVTOSTrackActor(net=net, objective=objective, loss_weight=loss_weight, settings=settings, cfg=cfg)
-
-
+    elif settings.script_name == "timostrack":
+        focal_loss = FocalLoss()
+        objective = {'giou': giou_loss, 'l1': l1_loss, 'focal': focal_loss, 'cls': BCEWithLogitsLoss()}
+        loss_weight = {'giou': cfg.TRAIN.GIOU_WEIGHT, 'l1': cfg.TRAIN.L1_WEIGHT, 'focal': 1., 'cls': 1.0}
+        actor = TIMOSTrackActor(net=net, objective=objective, loss_weight=loss_weight, settings=settings, cfg=cfg)
     else:
         raise ValueError("illegal script name")
 
