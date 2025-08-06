@@ -2,6 +2,9 @@ import random
 import torch.utils.data
 from lib.utils import TensorDict
 import numpy as np
+import os
+import json
+from datetime import datetime
 
 
 def no_processing(data):
@@ -236,9 +239,9 @@ class TrackingSampler(torch.utils.data.Dataset):
                         (H, W))] * self.num_search_frames
 
                 # Sample GT sequence for TimesNet training
-                gt_sequence_anno_backward = self.sample_gt_sequence(
+                gt_sequence_anno_backward, _ = self.sample_gt_sequence(
                     dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=50, direction='backward', future_steps=50)
-                gt_sequence_anno_forward = self.sample_gt_sequence(
+                gt_sequence_anno_forward, _ = self.sample_gt_sequence(
                     dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=50, direction='forward', future_steps=30)
 
                 data = TensorDict({'template_images': template_frames,
@@ -376,7 +379,7 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
 
     def __init__(self, datasets, p_datasets, samples_per_epoch, max_gap,
                  num_search_frames, num_template_frames=1, processing=no_processing, frame_sample_mode='causal',
-                 train_cls=False, pos_prob=0.5):
+                 train_cls=False, pos_prob=0.5,min_interval=50,future_steps=1):
         """
         args:
             datasets - List of datasets to be used for training
@@ -407,6 +410,8 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
         self.num_template_frames = num_template_frames
         self.processing = processing
         self.frame_sample_mode = frame_sample_mode
+        self.min_interval=min_interval
+        self.future_steps=future_steps
 
     def __len__(self):
         return self.samples_per_epoch
@@ -512,10 +517,10 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
                     (H, W))] * self.num_search_frames
 
                 # Sample GT sequence for TimesNet training
-                gt_sequence_anno_backward = self.sample_gt_sequence(
-                    dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=50, direction='backward', future_steps=50)
-                gt_sequence_anno_forward = self.sample_gt_sequence(
-                    dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=50, direction='forward', future_steps=5)
+                gt_sequence_anno_backward, gt_frame_ids_backward = self.sample_gt_sequence(
+                    dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=self.min_interval, direction='backward', future_steps=self.future_steps)
+                gt_sequence_anno_forward, gt_frame_ids_forward = self.sample_gt_sequence(
+                    dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=self.min_interval, direction='forward', future_steps=self.future_steps)
 
                 data = TensorDict({'template_images': template_frames,
                                    'template_anno': template_anno['bbox'],
@@ -527,6 +532,10 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
                                    'gt_sequence_anno_backward': gt_sequence_anno_backward,
                                    'gt_sequence_anno_forward': gt_sequence_anno_forward,
                                    #'gt_sequence_masks': gt_sequence_masks,
+                                   'template_frame_ids': template_frame_ids,
+                                   'search_frame_ids': search_frame_ids,
+                                   'gt_frame_ids_backward': gt_frame_ids_backward,
+                                   'gt_frame_ids_forward': gt_frame_ids_forward,
                                    'dataset': dataset.get_name(),
                                    'test_class': meta_obj_test.get('object_class_name'),
                                    'is_video_dataset': is_video_dataset})
@@ -606,7 +615,7 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
                         (H, W))] * self.num_search_frames
 
                 # Sample GT sequence for TimesNet training
-                gt_sequence_anno_backward = self.sample_gt_sequence(
+                gt_sequence_anno_backward, _ = self.sample_gt_sequence(
                     dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=50,
                     direction='backward', future_steps=50)
 
@@ -730,7 +739,7 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
         """
         Sample GT sequence for TimesNet training
         direction: 'backward' - from template start to search end (历史序列)
-                  'forward' - from search end to future (预测序列)
+                   'forward' - from search end to future (预测序列)
         min_interval: minimum interval for backward sequence
         future_steps: number of future steps to predict
         """
@@ -742,7 +751,7 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
             target_length = min_interval if direction == 'backward' else future_steps
             bboxes = bboxes * (target_length // len(bboxes)) + bboxes[:target_length % len(bboxes)]
             # 返回张量而不是列表，确保维度正确
-            return torch.stack(bboxes[:target_length]).unsqueeze(0)
+            return torch.stack(bboxes[:target_length]).unsqueeze(0), []
 
         # For video dataset, sample GT sequence
         template_start = min(template_frame_ids)
@@ -753,6 +762,9 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
         if direction == 'backward':
             # 历史序列：从模板开始到搜索帧前一帧
             gt_frame_ids = list(range(template_start, search_end))
+            if len(gt_frame_ids) >= min_interval:
+                # 如果实际间距大于最小间距，则均匀采样
+                gt_frame_ids = np.linspace(template_start, search_end - 1, min_interval, dtype=int).tolist()
             # 向前扩展
             if len(gt_frame_ids) < min_interval:
                 need = min_interval - len(gt_frame_ids)
@@ -760,13 +772,26 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
                 gt_frame_ids = list(range(new_start, search_end))
             # 还不足指定帧数，说明整个视频都不够
             if len(gt_frame_ids) < min_interval:
-                template_frames, template_anno, _ = dataset.get_frames(seq_id, template_frame_ids, seq_info_dict)
-                bboxes = template_anno['bbox']
+                # 获取已有的GT序列数据
                 gt_sequence_frames, gt_sequence_anno, _ = dataset.get_frames(seq_id, gt_frame_ids, seq_info_dict)
                 gt_bboxes = gt_sequence_anno['bbox']
-                bboxes = gt_bboxes + bboxes * (min_interval - len(gt_bboxes))
+                
+                # 用最前面的帧来复制填充（backward方向）
+                if len(gt_bboxes) > 0:
+                    first_bbox = gt_bboxes[0]
+                    first_frame_id = gt_frame_ids[0]
+                    # 用第一个bbox和frame_id填充
+                    bboxes =  [first_bbox] * (min_interval - len(gt_bboxes))+gt_bboxes
+                    complete_frame_ids =  [first_frame_id] * (min_interval - len(gt_frame_ids))+gt_frame_ids
+                else:
+                    # 如果连一个帧都没有，用模板帧填充
+                    template_frames, template_anno, _ = dataset.get_frames(seq_id, template_frame_ids, seq_info_dict)
+                    template_bbox = template_anno['bbox'][0]
+                    bboxes = [template_bbox] * min_interval
+                    complete_frame_ids = [template_frame_ids[0]] * min_interval
+                
                 # 返回张量而不是列表，确保维度正确
-                return torch.stack(bboxes[:min_interval]).unsqueeze(0)
+                return torch.stack(bboxes[:min_interval]).unsqueeze(0), complete_frame_ids
         else:
             # 预测序列：从搜索帧开始到未来
             gt_frame_ids = list(range(search_end, min(search_end + future_steps, total_frames)))
@@ -786,12 +811,31 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
                 
                 # 补足到指定步数
                 bboxes = gt_bboxes + [last_future_bbox] * (future_steps - len(gt_bboxes))
+                # 生成完整的帧ID列表，确保有足够的帧ID
+                complete_frame_ids = gt_frame_ids + [gt_frame_ids[-1] if gt_frame_ids else search_end] * (future_steps - len(gt_frame_ids))
                 # 返回张量而不是列表，确保维度正确
-                return torch.stack(bboxes[:future_steps]).unsqueeze(0)
+                return torch.stack(bboxes[:future_steps]).unsqueeze(0), complete_frame_ids
         
-        # 正常返回
+        # 正常返回            
         gt_sequence_frames, gt_sequence_anno, _ = dataset.get_frames(seq_id, gt_frame_ids, seq_info_dict)
         gt_bboxes = gt_sequence_anno['bbox']
         target_length = min_interval if direction == 'backward' else future_steps
+        
+        # 确保bboxes和frame_ids长度一致
+        if len(gt_bboxes) < target_length:
+            if direction == 'backward':
+                # backward序列用最前面的帧填充
+                gt_bboxes = [gt_bboxes[0]] * (target_length - len(gt_bboxes))+gt_bboxes
+            else:
+                # forward序列用最后一个帧填充
+                gt_bboxes = gt_bboxes + [gt_bboxes[-1]] * (target_length - len(gt_bboxes))
+        if len(gt_frame_ids) < target_length:
+            if direction == 'backward':
+                # backward序列用最前面的帧ID填充
+                gt_frame_ids =  [gt_frame_ids[0]] * (target_length - len(gt_frame_ids)) + gt_frame_ids
+            else:
+                # forward序列用最后一个帧ID填充
+                gt_frame_ids = gt_frame_ids + [gt_frame_ids[-1]] * (target_length - len(gt_frame_ids))
+        
         # 返回张量而不是列表，确保维度正确
-        return torch.stack(gt_bboxes[:target_length]).unsqueeze(0)
+        return torch.stack(gt_bboxes[:target_length]).unsqueeze(0), gt_frame_ids[:target_length]
