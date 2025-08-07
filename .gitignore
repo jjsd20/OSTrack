@@ -174,3 +174,7 @@ pytracking/run_local.py
 /tensorboard/
 *-results.json
 *.tar
+/experiments/cvtostrack/
+/experiments/kmostrack/
+/experiments/roistrack/
+/experiments/swinostrack/
