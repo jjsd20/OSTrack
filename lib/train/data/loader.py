@@ -178,7 +178,7 @@ class LTRLoader(torch.utils.data.dataloader.DataLoader):
     __initialized = False
 
     def __init__(self, name, dataset, training=True, batch_size=1, shuffle=False, sampler=None, batch_sampler=None,
-                 num_workers=0, epoch_interval=1, collate_fn=None, stack_dim=0, pin_memory=False, drop_last=False,
+                 num_workers=0, epoch_interval=1, collate_fn=None, stack_dim=0, pin_memory=True, drop_last=False,
                  timeout=0, worker_init_fn=None):
         if collate_fn is None:
             if stack_dim == 0:
