@@ -3,7 +3,7 @@
 # TimesNet配置
 TIMING:
   seq_len: 50  # 历史序列长度
-  pred_len: 2   # 预测序列长度
+  pred_len: 1   # 预测序列长度
   d_model: 16   # 模型维度
   embed: 'timeF'  # 嵌入类型
   freq: 'h'     # 频率
@@ -82,6 +82,8 @@ TRAIN:
   EPOCH: 300
   GIOU_WEIGHT: 2.0
   L1_WEIGHT: 5.0
+  TIMESNET_L1_WEIGHT: 0.5
+  TIMESNET_GIOU_WEIGHT: 0.2
   GRAD_CLIP_NORM: 0.1
   LR: 0.0004
   LR_DROP_EPOCH: 240

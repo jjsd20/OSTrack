@@ -39,7 +39,6 @@ class TIMOSTrack(nn.Module):
             nn.Unflatten(2, (TrackingConfig.d_model*2, 1, 1)),  # [B, pred_len, 128] → [B, pred_len, 128, 1, 1]
             nn.ConvTranspose2d(TrackingConfig.d_model*2, TrackingConfig.d_model*2, kernel_size=16, stride=16)  # 上采样到16×16
         )
-        self.config=TrackingConfig
 
         self.aux_loss = aux_loss
         self.head_type = head_type
@@ -63,26 +62,33 @@ class TIMOSTrack(nn.Module):
                                     return_last_attn=return_last_attn, )
         # TimesNet处理时序信息
         temporal_output, temporal_features = self.timesnet(gt_sequence_anno_backward, None)
-        temporal_spatial = self.temporal_proj(temporal_features) 
-        temporal_feat = temporal_spatial[:, -self.config.pred_len, :, :, :]
+        # temporal_features: [B, seq, C]
+        y = self.temporal_proj[0](temporal_features)  # Linear
+        y = self.temporal_proj[1](y)  # ReLU
+        B, seq, C = y.shape
+        y = y.view(B * seq, C, 1, 1)  # [B*seq, C, 1, 1]
+        y = self.temporal_proj[3](y)  # ConvTranspose2d
+        # x: [B*seq, C', H, W] 例如 [B*seq, 768, 16, 16]
+        C_out, H, W = y.shape[1:]
+        y = y.view(B, seq, C_out, H, W)  # [B, seq, C', H, W]
 
+        temporal_feat = y[:, -1, :, :, :]  # 取最后一帧 [B, C', H, W]
+        # 或者
+        # temporal_feat = y.mean(dim=1)               # 时序平均 [B, C', H, W]
         # Forward head
         feat_last = x#(b,320,768)
         if isinstance(x, list):
             feat_last = x[-1]
-
-        fused_feat = torch.cat([feat_last, temporal_feat], dim=1)
-
-        out = self.forward_head(fused_feat, None)
-
+        out = self.forward_head(feat_last,temporal_feat, None)
 
         out.update(aux_dict)
         out['backbone_feat'] = x
-        out['enc_feat']
+        # 添加TimesNet的预测输出用于损失计算
+        out['timesnet_pred'] = temporal_output  # TimesNet预测的bbox [B, pred_len, 4]
 
         return out
 
-    def forward_head(self, cat_feature, gt_score_map=None):
+    def forward_head(self, cat_feature, temporal_feat,gt_score_map=None):
         """
         cat_feature: output embeddings of the backbone, it can be (HW1+HW2, B, C) or (HW2, B, C)
         """
@@ -90,6 +96,7 @@ class TIMOSTrack(nn.Module):
         opt = (enc_opt.unsqueeze(-1)).permute((0, 3, 2, 1)).contiguous()#[32, 1, 768, 256]
         bs, Nq, C, HW = opt.size()
         opt_feat = opt.view(-1, C, self.feat_sz_s, self.feat_sz_s)#[32, 768, 16, 16]
+        fused_feat = torch.cat([opt_feat, temporal_feat], dim=1)
 
         if self.head_type == "CORNER":
             # run the corner head
@@ -103,7 +110,7 @@ class TIMOSTrack(nn.Module):
 
         elif self.head_type == "CENTER":
             # run the center head
-            score_map_ctr, bbox, size_map, offset_map = self.box_head(opt_feat, gt_score_map)
+            score_map_ctr, bbox, size_map, offset_map = self.box_head(fused_feat, gt_score_map)
             # outputs_coord = box_xyxy_to_cxcywh(bbox)
             outputs_coord = bbox
             outputs_coord_new = outputs_coord.view(bs, Nq, 4)
@@ -134,7 +141,7 @@ def build_timostrack(cfg, training=True):
                                            ce_loc=cfg.MODEL.BACKBONE.CE_LOC, #[3,6,9]
                                            ce_keep_ratio=cfg.MODEL.BACKBONE.CE_KEEP_RATIO,#[0.7,0.7,0.7]
                                            )
-        hidden_dim = backbone.embed_dim
+        hidden_dim = backbone.embed_dim + cfg.TIMING.d_model*2  # 768 + 128 = 896
         patch_start_index = 1
 
     elif cfg.MODEL.BACKBONE.TYPE == 'vit_large_patch16_224_ce':

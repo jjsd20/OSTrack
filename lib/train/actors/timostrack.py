@@ -105,8 +105,42 @@ class TIMOSTrackActor(BaseActor):
             location_loss = self.objective['focal'](pred_dict['score_map'], gt_gaussian_maps)
         else:
             location_loss = torch.tensor(0.0, device=l1_loss.device)
+        
+        # compute timesnet loss
+        timesnet_l1_loss = torch.tensor(0.0, device=l1_loss.device)
+        timesnet_giou_loss = torch.tensor(0.0, device=l1_loss.device)
+        
+        if 'timesnet_pred' in pred_dict and pred_dict['timesnet_pred'] is not None:
+            # TimesNet预测的bbox: [B, pred_len, 4] 
+            timesnet_pred_boxes = pred_dict['timesnet_pred']  
+            
+            # 使用最后一个预测作为当前帧的预测
+            if timesnet_pred_boxes.dim() == 3:  # [B, pred_len, 4]
+                timesnet_pred_current = timesnet_pred_boxes[:, -1, :]  # [B, 4] 取最后一个时间步的预测
+            else:  # [B, 4]
+                timesnet_pred_current = timesnet_pred_boxes
+            
+            # 确保预测框格式与gt_bbox一致 (x1,y1,w,h)
+            gt_bbox_for_timesnet = gt_bbox.clone()  # [B, 4] (x1,y1,w,h)
+            
+            # 计算TimesNet的L1损失
+            timesnet_l1_loss = self.objective['timesnet_l1'](timesnet_pred_current, gt_bbox_for_timesnet)
+            
+            # 计算TimesNet的GIoU损失
+            try:
+                # 转换为xyxy格式计算GIoU
+                timesnet_pred_xyxy = box_xywh_to_xyxy(timesnet_pred_current)
+                gt_bbox_xyxy = box_xywh_to_xyxy(gt_bbox_for_timesnet)
+                timesnet_giou_loss, _ = self.objective['timesnet_giou'](timesnet_pred_xyxy, gt_bbox_xyxy)
+            except:
+                timesnet_giou_loss = torch.tensor(0.0, device=l1_loss.device)
+        
         # weighted sum
-        loss = self.loss_weight['giou'] * giou_loss + self.loss_weight['l1'] * l1_loss + self.loss_weight['focal'] * location_loss
+        loss = (self.loss_weight['giou'] * giou_loss + 
+                self.loss_weight['l1'] * l1_loss + 
+                self.loss_weight['focal'] * location_loss +
+                self.loss_weight['timesnet_l1'] * timesnet_l1_loss +
+                self.loss_weight['timesnet_giou'] * timesnet_giou_loss)
         if return_status:
             # status for log
             mean_iou = iou.detach().mean()
@@ -114,6 +148,8 @@ class TIMOSTrackActor(BaseActor):
                       "Loss/giou": giou_loss.item(),
                       "Loss/l1": l1_loss.item(),
                       "Loss/location": location_loss.item(),
+                      "Loss/timesnet_l1": timesnet_l1_loss.item(),
+                      "Loss/timesnet_giou": timesnet_giou_loss.item(),
                       "IoU": mean_iou.item()}
             return loss, status
         else:
