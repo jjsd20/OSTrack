@@ -38,6 +38,7 @@ def run(settings):
 
     # update settings based on cfg
     update_settings(settings, cfg)
+    settings.wandb_resume_mode = "allow"
 
     # Record the training log
     log_dir = os.path.join(settings.save_dir, 'logs')
