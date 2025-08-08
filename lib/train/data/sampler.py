@@ -506,21 +506,19 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
                 template_frame_ids = [1] * self.num_template_frames
                 search_frame_ids = [1] * self.num_search_frames
             try:
-                template_frames, template_anno, meta_obj_train = dataset.get_frames(seq_id, template_frame_ids,
-                                                                                    seq_info_dict)
-                search_frames, search_anno, meta_obj_test = dataset.get_frames(seq_id, search_frame_ids, seq_info_dict)
+                # Optimized: collect all frame IDs and get them in one call
+                (template_frames, template_anno, meta_obj_train,
+                 search_frames, search_anno, meta_obj_test,
+                 gt_sequence_anno_backward, gt_frame_ids_backward,
+                 gt_sequence_anno_forward, gt_frame_ids_forward) = self.get_all_frames_optimized(
+                    dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict,
+                    min_interval=self.min_interval, future_steps=self.future_steps)
 
                 H, W, _ = template_frames[0].shape
                 template_masks = template_anno['mask'] if 'mask' in template_anno else [torch.zeros(
                     (H, W))] * self.num_template_frames
                 search_masks = search_anno['mask'] if 'mask' in search_anno else [torch.zeros(
                     (H, W))] * self.num_search_frames
-
-                # Sample GT sequence for TimesNet training (optimized to reduce data loading time)
-                (gt_sequence_anno_backward, gt_frame_ids_backward, 
-                 gt_sequence_anno_forward, gt_frame_ids_forward) = self.sample_gt_sequence_bidirectional(
-                    dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, 
-                    min_interval=self.min_interval, future_steps=self.future_steps)
 
                 data = TensorDict({'template_images': template_frames,
                                    'template_anno': template_anno['bbox'],
@@ -532,12 +530,12 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
                                    'gt_sequence_anno_backward': gt_sequence_anno_backward,
                                    'gt_sequence_anno_forward': gt_sequence_anno_forward,
                                    #'gt_sequence_masks': gt_sequence_masks,
-                                   'template_frame_ids': template_frame_ids,
-                                   'search_frame_ids': search_frame_ids,
+                                   # 'template_frame_ids': template_frame_ids,
+                                   # 'search_frame_ids': search_frame_ids,
                                    # 'gt_frame_ids_backward': gt_frame_ids_backward,
                                    # 'gt_frame_ids_forward': gt_frame_ids_forward,
-                                   'dataset': dataset.get_name(),
-                                   'test_class': meta_obj_test.get('object_class_name'),
+                                   # 'dataset': dataset.get_name(),
+                                   # 'test_class': meta_obj_test.get('object_class_name'),
                                    'is_video_dataset': is_video_dataset,
                                    'image_size': [H,W]})
                 # make data augmentation
@@ -963,3 +961,159 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
             gt_frame_ids_forward = gt_frame_ids_forward[:future_steps]
         
         return backward_result, gt_frame_ids_backward, forward_result, gt_frame_ids_forward
+
+    def get_all_frames_optimized(self, dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=50, future_steps=5):
+        """
+        Optimized method to get all required frames (template, search, GT sequence) in a single dataset.get_frames() call
+        to minimize I/O overhead and improve data loading performance.
+        
+        Returns:
+            tuple: (template_frames, template_anno, meta_obj_train,
+                   search_frames, search_anno, meta_obj_test,
+                   gt_sequence_anno_backward, gt_frame_ids_backward,
+                   gt_sequence_anno_forward, gt_frame_ids_forward)
+        """
+        is_video_dataset = dataset.is_video_sequence()
+        
+        if not is_video_dataset:
+            # For image dataset, handle all frames together
+            all_frame_ids = list(set(template_frame_ids + search_frame_ids))
+            all_frames, all_anno, all_meta = dataset.get_frames(seq_id, all_frame_ids, seq_info_dict)
+            
+            # Create frame_id to data mapping
+            frame_data = {}
+            for i, fid in enumerate(all_frame_ids):
+                frame_data[fid] = {
+                    'frame': all_frames[i],
+                    'bbox': all_anno['bbox'][i],
+                    'mask': all_anno['mask'][i] if 'mask' in all_anno else None,
+                    'meta': all_meta[i] if isinstance(all_meta, list) else all_meta
+                }
+            
+            # Extract template data
+            template_frames = [frame_data[fid]['frame'] for fid in template_frame_ids]
+            template_bboxes = [frame_data[fid]['bbox'] for fid in template_frame_ids]
+            template_masks = [frame_data[fid]['mask'] for fid in template_frame_ids] if frame_data[template_frame_ids[0]]['mask'] is not None else None
+            template_anno = {'bbox': template_bboxes}
+            if template_masks is not None:
+                template_anno['mask'] = template_masks
+            meta_obj_train = frame_data[template_frame_ids[0]]['meta']
+            
+            # Extract search data
+            search_frames = [frame_data[fid]['frame'] for fid in search_frame_ids]
+            search_bboxes = [frame_data[fid]['bbox'] for fid in search_frame_ids]
+            search_masks = [frame_data[fid]['mask'] for fid in search_frame_ids] if frame_data[search_frame_ids[0]]['mask'] is not None else None
+            search_anno = {'bbox': search_bboxes}
+            if search_masks is not None:
+                search_anno['mask'] = search_masks
+            meta_obj_test = frame_data[search_frame_ids[0]]['meta']
+            
+            # Generate GT sequences for image dataset
+            bboxes = template_bboxes
+            bboxes_backward = bboxes * (min_interval // len(bboxes)) + bboxes[:min_interval % len(bboxes)]
+            gt_sequence_anno_backward = torch.stack(bboxes_backward[:min_interval]).unsqueeze(0)
+            bboxes_forward = bboxes * (future_steps // len(bboxes)) + bboxes[:future_steps % len(bboxes)]
+            gt_sequence_anno_forward = torch.stack(bboxes_forward[:future_steps]).unsqueeze(0)
+            
+            return (template_frames, template_anno, meta_obj_train,
+                   search_frames, search_anno, meta_obj_test,
+                   gt_sequence_anno_backward, [],
+                   gt_sequence_anno_forward, [])
+        
+        # For video dataset - collect all frame IDs first
+        template_start = min(template_frame_ids)
+        search_end = max(search_frame_ids)
+        seq_info = dataset.get_sequence_info(seq_id)
+        total_frames = seq_info["length"] if "length" in seq_info else len(seq_info["visible"])
+        
+        # Calculate GT sequence frame IDs
+        gt_frame_ids_backward = list(range(template_start, search_end))
+        if len(gt_frame_ids_backward) >= min_interval:
+            gt_frame_ids_backward = np.linspace(template_start, search_end - 1, min_interval, dtype=int).tolist()
+        if len(gt_frame_ids_backward) < min_interval:
+            need = min_interval - len(gt_frame_ids_backward)
+            new_start = max(0, template_start - need)
+            gt_frame_ids_backward = list(range(new_start, search_end))
+        
+        gt_frame_ids_forward = list(range(search_end, min(search_end + future_steps, total_frames)))
+        
+        # Collect ALL unique frame IDs needed
+        all_needed_frame_ids = set(template_frame_ids + search_frame_ids + gt_frame_ids_backward + gt_frame_ids_forward)
+        
+        # Handle edge cases for insufficient frames
+        if len(gt_frame_ids_backward) < min_interval:
+            all_needed_frame_ids.update(template_frame_ids)  # Fallback frames
+        if len(gt_frame_ids_forward) < future_steps:
+            all_needed_frame_ids.add(search_end)  # Fallback frame
+        
+        # Single call to get ALL frames
+        all_frame_ids_list = sorted(list(all_needed_frame_ids))
+        all_frames, all_anno, all_meta = dataset.get_frames(seq_id, all_frame_ids_list, seq_info_dict)
+        
+        # Create frame_id to data mapping
+        frame_data = {}
+        for i, fid in enumerate(all_frame_ids_list):
+            frame_data[fid] = {
+                'frame': all_frames[i],
+                'bbox': all_anno['bbox'][i],
+                'mask': all_anno['mask'][i] if 'mask' in all_anno else None,
+                'meta': all_meta[i] if isinstance(all_meta, list) else all_meta
+            }
+        
+        # Extract template data
+        template_frames = [frame_data[fid]['frame'] for fid in template_frame_ids]
+        template_bboxes = [frame_data[fid]['bbox'] for fid in template_frame_ids]
+        template_masks = [frame_data[fid]['mask'] for fid in template_frame_ids] if frame_data[template_frame_ids[0]]['mask'] is not None else None
+        template_anno = {'bbox': template_bboxes}
+        if template_masks is not None:
+            template_anno['mask'] = template_masks
+        meta_obj_train = frame_data[template_frame_ids[0]]['meta']
+        
+        # Extract search data
+        search_frames = [frame_data[fid]['frame'] for fid in search_frame_ids]
+        search_bboxes = [frame_data[fid]['bbox'] for fid in search_frame_ids]
+        search_masks = [frame_data[fid]['mask'] for fid in search_frame_ids] if frame_data[search_frame_ids[0]]['mask'] is not None else None
+        search_anno = {'bbox': search_bboxes}
+        if search_masks is not None:
+            search_anno['mask'] = search_masks
+        meta_obj_test = frame_data[search_frame_ids[0]]['meta']
+        
+        # Process GT sequences
+        # Backward sequence
+        if len(gt_frame_ids_backward) < min_interval:
+            available_backward_bboxes = [frame_data[fid]['bbox'] for fid in gt_frame_ids_backward if fid in frame_data]
+            if available_backward_bboxes:
+                first_bbox = available_backward_bboxes[0]
+                bboxes_backward = [first_bbox] * (min_interval - len(available_backward_bboxes)) + available_backward_bboxes
+            else:
+                # Fallback to template bbox
+                template_bbox = frame_data[template_frame_ids[0]]['bbox']
+                bboxes_backward = [template_bbox] * min_interval
+            gt_frame_ids_backward = [gt_frame_ids_backward[0]] * (min_interval - len(gt_frame_ids_backward)) + gt_frame_ids_backward if gt_frame_ids_backward else [template_frame_ids[0]] * min_interval
+        else:
+            bboxes_backward = [frame_data[fid]['bbox'] for fid in gt_frame_ids_backward[:min_interval]]
+            gt_frame_ids_backward = gt_frame_ids_backward[:min_interval]
+        
+        gt_sequence_anno_backward = torch.stack(bboxes_backward[:min_interval]).unsqueeze(0)
+        
+        # Forward sequence
+        if len(gt_frame_ids_forward) < future_steps:
+            available_forward_bboxes = [frame_data[fid]['bbox'] for fid in gt_frame_ids_forward if fid in frame_data]
+            if available_forward_bboxes:
+                last_bbox = available_forward_bboxes[-1]
+                bboxes_forward = available_forward_bboxes + [last_bbox] * (future_steps - len(available_forward_bboxes))
+            else:
+                # Fallback to search bbox
+                search_bbox = frame_data[search_end]['bbox'] if search_end in frame_data else frame_data[search_frame_ids[0]]['bbox']
+                bboxes_forward = [search_bbox] * future_steps
+            gt_frame_ids_forward = gt_frame_ids_forward + [gt_frame_ids_forward[-1] if gt_frame_ids_forward else search_end] * (future_steps - len(gt_frame_ids_forward))
+        else:
+            bboxes_forward = [frame_data[fid]['bbox'] for fid in gt_frame_ids_forward[:future_steps]]
+            gt_frame_ids_forward = gt_frame_ids_forward[:future_steps]
+        
+        gt_sequence_anno_forward = torch.stack(bboxes_forward[:future_steps]).unsqueeze(0)
+        
+        return (template_frames, template_anno, meta_obj_train,
+               search_frames, search_anno, meta_obj_test,
+               gt_sequence_anno_backward, gt_frame_ids_backward,
+               gt_sequence_anno_forward, gt_frame_ids_forward)

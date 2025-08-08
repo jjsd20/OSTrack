@@ -31,11 +31,13 @@ def ltr_collate(batch):
     if isinstance(batch[0], torch.Tensor):
         out = None
         if _check_use_shared_memory():
-            # If we're in a background process, concatenate directly into a
-            # shared memory tensor to avoid an extra copy
-            numel = sum([x.numel() for x in batch])
-            storage = batch[0].storage()._new_shared(numel)
-            out = batch[0].new(storage)
+            # If we're in a background process, create a properly shaped shared tensor
+            # Calculate the correct output shape for stacking at dim=0
+            batch_size = len(batch)
+            elem_shape = batch[0].shape
+            out_shape = (batch_size,) + elem_shape
+            # Create a new tensor with the correct shape directly
+            out = batch[0].new_empty(out_shape).share_memory_()
         return torch.stack(batch, 0, out=out)
         # if batch[0].dim() < 4:
         #     return torch.stack(batch, 0, out=out)
@@ -82,11 +84,13 @@ def ltr_collate_stack1(batch):
     if isinstance(batch[0], torch.Tensor):
         out = None
         if _check_use_shared_memory():
-            # If we're in a background process, concatenate directly into a
-            # shared memory tensor to avoid an extra copy
-            numel = sum([x.numel() for x in batch])
-            storage = batch[0].storage()._new_shared(numel)
-            out = batch[0].new(storage)
+            # If we're in a background process, create a properly shaped shared tensor
+            # Calculate the correct output shape for stacking at dim=1
+            batch_size = len(batch)
+            elem_shape = batch[0].shape
+            out_shape = (elem_shape[0], batch_size) + elem_shape[1:]
+            # Create a new tensor with the correct shape directly
+            out = batch[0].new_empty(out_shape).share_memory_()
         return torch.stack(batch, 1, out=out)
         # if batch[0].dim() < 4:
         #     return torch.stack(batch, 0, out=out)

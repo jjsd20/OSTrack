@@ -8,9 +8,6 @@ import torch.nn.functional as F
 def stack_tensors(x):
     if isinstance(x, (list, tuple)) and isinstance(x[0], torch.Tensor):
         return torch.stack(x)
-    elif isinstance(x, torch.Tensor):
-        # 如果已经是张量，直接返回，避免重复处理
-        return x
     return x
 
 

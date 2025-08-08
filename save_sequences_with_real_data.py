@@ -278,13 +278,41 @@ def save_sequences_with_real_data(num_sequences=10, save_dir="real_sequences", s
     # 创建保存器
     saver = SequenceSaver(save_dir)
     
+    # 初始化计时变量（参考ltr_trainer.py）
+    import time
+    num_frames = 0
+    start_time = time.time()
+    prev_time = start_time
+    avg_data_time = 0
+    total_data_time = 0
+    
     # 保存序列
     saved_paths = []
     
+    print(f"\n开始数据加载性能测试...")
+    print(f"{'序列':<6} {'单次时间(s)':<12} {'累计平均(s)':<12} {'FPS':<8}")
+    print("-" * 45)
+    
     for i in range(num_sequences):
         try:
-            # 从采样器获取数据
+            # 记录数据读取开始时间
+            data_start_time = time.time()
+            
+            # 从采样器获取数据（这里是主要的数据加载时间）
             data = sampler_obj[i]
+            
+            # 记录数据读取完成时间
+            data_read_done_time = time.time()
+            
+            # 计算本次数据加载时间
+            current_data_time = data_read_done_time - data_start_time
+            total_data_time += current_data_time
+            num_frames += 1
+            
+            # 计算平均数据加载时间和FPS
+            avg_data_time = total_data_time / num_frames
+            current_fps = 1.0 / current_data_time if current_data_time > 0 else 0
+            avg_fps = num_frames / (data_read_done_time - start_time)
             
             # 保存序列
             save_path = saver.save_sequence_data(
@@ -295,14 +323,26 @@ def save_sequences_with_real_data(num_sequences=10, save_dir="real_sequences", s
             )
             saved_paths.append(save_path)
             
-            if (i + 1) % 5 == 0:
-                print(f"已保存 {i + 1}/{num_sequences} 个序列")
+            # 打印计时信息（每5个序列或最后一个）
+            if (i + 1) % 5 == 0 or i == num_sequences - 1:
+                print(f"{i+1:<6} {current_data_time:<12.3f} {avg_data_time:<12.3f} {avg_fps:<8.1f}")
                 
         except Exception as e:
             print(f"保存序列 {i} 时出错: {e}")
             continue
     
-    print(f"保存完成！共保存 {len(saved_paths)} 个序列")
+    # 打印最终统计信息
+    total_time = time.time() - start_time
+    print("-" * 45)
+    print(f"数据加载性能统计:")
+    print(f"  - 总序列数: {num_frames}")
+    print(f"  - 总时间: {total_time:.3f}s")
+    print(f"  - 平均数据加载时间: {avg_data_time:.3f}s")
+    print(f"  - 平均FPS: {num_frames / total_time:.1f}")
+    print(f"  - 最快单次: {min([total_data_time / num_frames] * num_frames) if num_frames > 0 else 0:.3f}s")
+    print(f"  - 数据加载占比: {(total_data_time / total_time * 100):.1f}%")
+    
+    print(f"\n保存完成！共保存 {len(saved_paths)} 个序列")
     return saved_paths
 
 
@@ -343,61 +383,237 @@ def save_sequences_with_mock_data(num_sequences=10, save_dir="mock_sequences", s
         print(f"保存模拟序列 {i}: {save_path}")
 
 
+def benchmark_data_loading(num_sequences=50, config_file=None):
+    """专门的数据加载性能测试函数"""
+    
+    print("=== 数据加载性能基准测试 ===")
+    
+    # 创建设置和配置
+    settings, cfg = create_settings_and_config(config_file)
+    if settings is None:
+        print("无法创建设置，退出")
+        return
+    
+    # 创建数据集
+    datasets = create_datasets(settings, cfg)
+    if datasets is None:
+        print("无法创建数据集，退出")
+        return
+    
+    # 创建采样器
+    sampler_obj = create_sampler(settings, cfg, datasets)
+    
+    # 初始化计时变量
+    import time
+    times = []
+    
+    print(f"开始测试 {num_sequences} 个序列的数据加载时间...")
+    print(f"配置: {cfg.DATA.TRAIN.DATASETS_NAME}, 模板:{cfg.DATA.TEMPLATE.SIZE}, 搜索:{cfg.DATA.SEARCH.SIZE}")
+    if hasattr(cfg, 'TIMING'):
+        print(f"序列长度: {cfg.TIMING.seq_len}, 预测长度: {cfg.TIMING.pred_len}")
+    print("-" * 60)
+    
+    # 预热（前几次可能较慢）
+    print("预热中...")
+    for i in range(3):
+        try:
+            _ = sampler_obj[i]
+        except:
+            pass
+    
+    print("开始正式测试...")
+    start_total = time.time()
+    
+    for i in range(num_sequences):
+        try:
+            start_time = time.time()
+            data = sampler_obj[i]
+            end_time = time.time()
+            
+            load_time = end_time - start_time
+            times.append(load_time)
+            
+            if (i + 1) % 10 == 0:
+                avg_time = sum(times) / len(times)
+                print(f"已测试 {i+1:3d}/{num_sequences}, 当前: {load_time:.3f}s, 平均: {avg_time:.3f}s, FPS: {1/avg_time:.1f}")
+                
+        except Exception as e:
+            print(f"序列 {i} 加载失败: {e}")
+            continue
+    
+    total_time = time.time() - start_total
+    
+    # 统计结果
+    if times:
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        fps = 1.0 / avg_time
+        
+        print("\n" + "=" * 60)
+        print("数据加载性能测试结果:")
+        print(f"  - 成功测试序列数: {len(times)}")
+        print(f"  - 平均加载时间: {avg_time:.3f}s")
+        print(f"  - 最快加载时间: {min_time:.3f}s")
+        print(f"  - 最慢加载时间: {max_time:.3f}s")
+        print(f"  - 平均FPS: {fps:.1f}")
+        print(f"  - 总测试时间: {total_time:.3f}s")
+        print(f"  - 数据加载效率: {(sum(times)/total_time*100):.1f}%")
+        
+        # 分析数据组成
+        if hasattr(data, 'keys'):
+            print(f"\n数据组成分析:")
+            for key in data.keys():
+                if hasattr(data[key], 'shape'):
+                    print(f"  - {key}: {data[key].shape}")
+                elif hasattr(data[key], '__len__'):
+                    print(f"  - {key}: length={len(data[key])}")
+                else:
+                    print(f"  - {key}: {type(data[key])}")
+    else:
+        print("没有成功的测试数据")
+
+
+def test_data_loading_performance():
+    """专门用于测试数据加载性能的函数"""
+    
+    # ========== 测试参数设置 ==========
+    config_file = 'experiments/timostrack/vitb_256_mae_ce_96x1_ep300.yaml'
+    test_sequences = 50  # 测试序列数量
+    
+    print("=" * 60)
+    print("数据加载性能测试")
+    print("=" * 60)
+    print(f"配置文件: {config_file}")
+    print(f"测试序列数: {test_sequences}")
+    print("=" * 60)
+    
+    # 运行基准测试
+    benchmark_data_loading(test_sequences, config_file)
+
+
 def main():
     """主函数"""
     print("真实数据集序列保存工具")
     print("=" * 50)
     
-    # 检查命令行参数
-    import argparse
-    parser = argparse.ArgumentParser(description='序列保存工具')
-    parser.add_argument('--config', type=str, default='experiments/timostrack/vitb_256_mae_ce_96x1_ep300.yaml',
-                        help='配置文件路径')
-    parser.add_argument('--num_sequences', type=int, default=96,
-                        help='要保存的序列数量')
-    parser.add_argument('--save_dir', type=str, default='real_sequences',
-                        help='保存目录')
-    parser.add_argument('--no_images', action='store_true',
-                        help='不保存图像文件')
-    parser.add_argument('--check_env', action='store_true',
-                        help='检查环境设置')
+    # ========== 直接在代码中设置参数 ==========
+    config_file = 'experiments/timostrack/vitb_256_mae_ce_96x1_ep300.yaml'
+    num_sequences = 50  # 要保存的序列数量
+    save_dir = 'real_sequences'  # 保存目录
+    save_images = False  # 是否保存图像文件
+    check_env = True  # 是否检查环境设置
     
-    args = parser.parse_args()
+    # ========== 选择运行模式 ==========
+    # 模式1: 纯性能测试（推荐用于测试优化效果）
+    run_performance_test = False
+    
+    # 模式2: 保存序列并测试性能
+    run_save_with_timing = True
+    
+    # 模式3: 只保存序列，不测试性能
+    run_save_only = False
+    
+    print(f"配置参数:")
+    print(f"  - 配置文件: {config_file}")
+    print(f"  - 序列数量: {num_sequences}")
+    print(f"  - 保存目录: {save_dir}")
+    print(f"  - 保存图像: {save_images}")
+    print(f"  - 性能测试模式: {run_performance_test}")
+    print("-" * 50)
     
     # 检查环境设置
-    if args.check_env:
+    if check_env:
         print("检查环境设置...")
         try:
             env = env_settings()
             print("✓ 环境设置加载成功")
             print(f"工作目录: {env.workspace_dir}")
-            print(f"LaSOT目录: {env.lasot_dir}")
-            print(f"GOT-10k目录: {env.got10k_dir}")
+            if hasattr(env, 'lasot_dir'):
+                print(f"LaSOT目录: {env.lasot_dir}")
+            if hasattr(env, 'got10k_dir'):
+                print(f"GOT-10k目录: {env.got10k_dir}")
         except Exception as e:
             print(f"✗ 环境设置加载失败: {e}")
             print("将使用模拟数据")
+        print("-" * 50)
     
-    # 尝试使用真实数据保存
-    try:
-        saved_paths = save_sequences_with_real_data(
-            num_sequences=args.num_sequences, 
-            save_dir=args.save_dir, 
-            save_images=not args.no_images,
-            config_file=args.config
-        )
-        if saved_paths:
-            print(f"成功保存 {len(saved_paths)} 个真实序列")
-    except Exception as e:
-        print(f"真实数据保存失败: {e}")
-        print("使用模拟数据作为备选")
-        save_sequences_with_mock_data(
-            num_sequences=args.num_sequences, 
-            save_dir=args.save_dir, 
-            save_images=not args.no_images
-        )
+    # 模式1: 纯性能测试
+    if run_performance_test:
+        print("开始运行数据加载性能基准测试...")
+        benchmark_data_loading(num_sequences, config_file)
+        return
+    
+    # 模式2: 保存序列并测试性能
+    if run_save_with_timing:
+        try:
+            saved_paths = save_sequences_with_real_data(
+                num_sequences=num_sequences, 
+                save_dir=save_dir, 
+                save_images=save_images,
+                config_file=config_file
+            )
+            if saved_paths:
+                print(f"成功保存 {len(saved_paths)} 个真实序列")
+        except Exception as e:
+            print(f"真实数据保存失败: {e}")
+            print("使用模拟数据作为备选")
+            save_sequences_with_mock_data(
+                num_sequences=num_sequences, 
+                save_dir=save_dir, 
+                save_images=save_images
+            )
+        return
+    
+    # 模式3: 只保存序列
+    if run_save_only:
+        try:
+            # 创建设置和配置
+            settings, cfg = create_settings_and_config(config_file)
+            if settings is None:
+                print("无法创建设置，退出")
+                return
+            
+            # 创建数据集
+            datasets = create_datasets(settings, cfg)
+            if datasets is None:
+                print("无法创建数据集，使用模拟数据")
+                save_sequences_with_mock_data(num_sequences, save_dir, save_images, cfg)
+                return
+            
+            # 创建采样器
+            sampler_obj = create_sampler(settings, cfg, datasets)
+            
+            # 创建保存器
+            saver = SequenceSaver(save_dir)
+            
+            # 简单保存，不计时
+            saved_paths = []
+            for i in range(num_sequences):
+                try:
+                    data = sampler_obj[i]
+                    save_path = saver.save_sequence_data(
+                        data, 
+                        f"seq_{i:06d}", 
+                        save_images=save_images,
+                        save_format="json"
+                    )
+                    saved_paths.append(save_path)
+                    
+                    if (i + 1) % 10 == 0:
+                        print(f"已保存 {i + 1}/{num_sequences} 个序列")
+                        
+                except Exception as e:
+                    print(f"保存序列 {i} 时出错: {e}")
+                    continue
+            
+            print(f"保存完成！共保存 {len(saved_paths)} 个序列")
+            
+        except Exception as e:
+            print(f"保存失败: {e}")
     
     print("\n" + "=" * 50)
-    print("序列保存完成！")
+    print("程序执行完成！")
 
 
 if __name__ == "__main__":
