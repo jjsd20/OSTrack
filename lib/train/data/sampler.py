@@ -506,11 +506,13 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
                 template_frame_ids = [1] * self.num_template_frames
                 search_frame_ids = [1] * self.num_search_frames
             try:
-                # Optimized: collect all frame IDs and get them in one call
-                (template_frames, template_anno, meta_obj_train,
-                 search_frames, search_anno, meta_obj_test,
-                 gt_sequence_anno_backward, gt_frame_ids_backward,
-                 gt_sequence_anno_forward, gt_frame_ids_forward) = self.get_all_frames_optimized(
+                # 分离优化：图片和GT框分别获取
+                # 1. 只获取template和search图片（合并I/O）
+                template_frames, template_anno, meta_obj_train = dataset.get_frames(seq_id, template_frame_ids, seq_info_dict)
+                search_frames, search_anno, meta_obj_test = dataset.get_frames(seq_id, search_frame_ids, seq_info_dict)
+                
+                # 2. 单独高效获取GT bbox序列（无图片I/O）
+                gt_sequence_anno_backward, gt_frame_ids_backward, gt_sequence_anno_forward, gt_frame_ids_forward = self.get_gt_bbox_sequences(
                     dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict,
                     min_interval=self.min_interval, future_steps=self.future_steps)
 
@@ -1116,4 +1118,87 @@ class TimingTrackingSampler(torch.utils.data.Dataset):
         return (template_frames, template_anno, meta_obj_train,
                search_frames, search_anno, meta_obj_test,
                gt_sequence_anno_backward, gt_frame_ids_backward,
+               gt_sequence_anno_forward, gt_frame_ids_forward)
+    
+    def get_gt_bbox_sequences(self, dataset, seq_id, template_frame_ids, search_frame_ids, seq_info_dict, min_interval=50, future_steps=5):
+        """
+        高效获取GT bbox序列，不加载图片，只获取bbox坐标
+        专为大数据集优化，避免不必要的图片I/O
+        
+        Returns:
+            tuple: (gt_sequence_anno_backward, gt_frame_ids_backward,
+                   gt_sequence_anno_forward, gt_frame_ids_forward)
+        """
+        is_video_dataset = dataset.is_video_sequence()
+        
+        if not is_video_dataset:
+            # 图像数据集：直接从序列信息获取bbox
+            seq_info = dataset.get_sequence_info(seq_id)
+            template_bboxes = [seq_info['bbox'][fid] for fid in template_frame_ids]
+            
+            # 生成GT序列
+            bboxes_backward = template_bboxes * (min_interval // len(template_bboxes)) + template_bboxes[:min_interval % len(template_bboxes)]
+            gt_sequence_anno_backward = torch.stack(bboxes_backward[:min_interval]).unsqueeze(0)
+            
+            bboxes_forward = template_bboxes * (future_steps // len(template_bboxes)) + template_bboxes[:future_steps % len(template_bboxes)]
+            gt_sequence_anno_forward = torch.stack(bboxes_forward[:future_steps]).unsqueeze(0)
+            
+            return (gt_sequence_anno_backward, [],
+                   gt_sequence_anno_forward, [])
+        
+        # 视频数据集：只获取需要的bbox，不加载图片
+        template_start = min(template_frame_ids)
+        search_end = max(search_frame_ids)
+        seq_info = dataset.get_sequence_info(seq_id)
+        total_frames = seq_info["length"] if "length" in seq_info else len(seq_info["visible"])
+        
+        # 计算GT序列帧ID
+        gt_frame_ids_backward = list(range(template_start, search_end))
+        if len(gt_frame_ids_backward) >= min_interval:
+            gt_frame_ids_backward = np.linspace(template_start, search_end - 1, min_interval, dtype=int).tolist()
+        if len(gt_frame_ids_backward) < min_interval:
+            need = min_interval - len(gt_frame_ids_backward)
+            new_start = max(0, template_start - need)
+            gt_frame_ids_backward = list(range(new_start, search_end))
+        
+        gt_frame_ids_forward = list(range(search_end, min(search_end + future_steps, total_frames)))
+        
+        # 直接从序列信息中提取bbox，无需加载图片
+        bbox_tensor = seq_info['bbox']
+        
+        # 处理backward序列
+        if len(gt_frame_ids_backward) < min_interval:
+            available_bboxes = [bbox_tensor[fid].clone() for fid in gt_frame_ids_backward if fid < len(bbox_tensor)]
+            if available_bboxes:
+                first_bbox = available_bboxes[0]
+                bboxes_backward = [first_bbox] * (min_interval - len(available_bboxes)) + available_bboxes
+            else:
+                # 回退到模板bbox
+                template_bbox = bbox_tensor[template_frame_ids[0]].clone()
+                bboxes_backward = [template_bbox] * min_interval
+            gt_frame_ids_backward = [gt_frame_ids_backward[0]] * (min_interval - len(gt_frame_ids_backward)) + gt_frame_ids_backward if gt_frame_ids_backward else [template_frame_ids[0]] * min_interval
+        else:
+            bboxes_backward = [bbox_tensor[fid].clone() for fid in gt_frame_ids_backward[:min_interval]]
+            gt_frame_ids_backward = gt_frame_ids_backward[:min_interval]
+        
+        gt_sequence_anno_backward = torch.stack(bboxes_backward[:min_interval]).unsqueeze(0)
+        
+        # 处理forward序列
+        if len(gt_frame_ids_forward) < future_steps:
+            available_bboxes = [bbox_tensor[fid].clone() for fid in gt_frame_ids_forward if fid < len(bbox_tensor)]
+            if available_bboxes:
+                last_bbox = available_bboxes[-1]
+                bboxes_forward = available_bboxes + [last_bbox] * (future_steps - len(available_bboxes))
+            else:
+                # 回退到搜索bbox
+                search_bbox = bbox_tensor[search_end].clone() if search_end < len(bbox_tensor) else bbox_tensor[search_frame_ids[0]].clone()
+                bboxes_forward = [search_bbox] * future_steps
+            gt_frame_ids_forward = gt_frame_ids_forward + [gt_frame_ids_forward[-1] if gt_frame_ids_forward else search_end] * (future_steps - len(gt_frame_ids_forward))
+        else:
+            bboxes_forward = [bbox_tensor[fid].clone() for fid in gt_frame_ids_forward[:future_steps]]
+            gt_frame_ids_forward = gt_frame_ids_forward[:future_steps]
+        
+        gt_sequence_anno_forward = torch.stack(bboxes_forward[:future_steps]).unsqueeze(0)
+        
+        return (gt_sequence_anno_backward, gt_frame_ids_backward,
                gt_sequence_anno_forward, gt_frame_ids_forward)
