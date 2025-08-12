@@ -45,10 +45,7 @@ class LTRTrainer(BaseTrainer):
                 world_size = get_world_size()
                 cur_train_samples = self.loaders[0].dataset.samples_per_epoch * max(0, self.epoch - 1)
                 interval = (world_size * settings.batchsize)  # * interval
-                # For resuming from a checkpoint that's earlier than the last wandb step, use "allow" mode
-                # This allows wandb to handle the situation gracefully
-                resume_mode = getattr(settings, 'wandb_resume_mode', 'allow')
-                self.wandb_writer = WandbWriter(settings.project_path[6:], {}, tensorboard_writer_dir, cur_train_samples, interval, id='47bo4np1', resume_mode=resume_mode)
+                self.wandb_writer = WandbWriter(settings.project_path[6:], {}, tensorboard_writer_dir, cur_train_samples, interval)
 
         self.move_data_to_gpu = getattr(settings, 'move_data_to_gpu', True)
         self.settings = settings
