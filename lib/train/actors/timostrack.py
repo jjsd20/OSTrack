@@ -83,7 +83,7 @@ class TIMOSTrackActor(BaseActor):
         gt_bbox = gt_dict['search_anno'][-1] #[32,4] # (Ns, batch, 4) (x1,y1,w,h) -> (batch, 4)
         gt_gaussian_maps = generate_heatmap(gt_dict['search_anno'], self.cfg.DATA.SEARCH.SIZE, self.cfg.MODEL.BACKBONE.STRIDE)
         gt_gaussian_maps = gt_gaussian_maps[-1].unsqueeze(1)
-        gt_sequence_anno_forward=gt_dict['gt_sequence_anno_forward']
+        gt_sequence_anno_forward=gt_dict['gt_sequence_anno_forward'].squeeze(0)
 
         # Get boxes
         pred_boxes = pred_dict['pred_boxes']#[32,1,4]

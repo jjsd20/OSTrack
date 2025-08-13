@@ -97,23 +97,42 @@ def build_dataloaders(cfg, settings):
     output_sz = settings.output_sz #TEMPLATE.SIZE=128， SEARCH.SIZE=256
     search_area_factor = settings.search_area_factor #TEMPLATE.FACTOR=2.0, SEARCH.FACTOR=4.0
 
-    data_processing_train = processing.STARKProcessing(search_area_factor=search_area_factor,
-                                                       output_sz=output_sz,
-                                                       center_jitter_factor=settings.center_jitter_factor,
-                                                       scale_jitter_factor=settings.scale_jitter_factor,
-                                                       mode='sequence',
-                                                       transform=transform_train,
-                                                       joint_transform=transform_joint,
-                                                       settings=settings)
+    if settings.script_name == "ostrack":
+        data_processing_train = processing.STARKProcessing(search_area_factor=search_area_factor,
+                                                           output_sz=output_sz,
+                                                           center_jitter_factor=settings.center_jitter_factor,
+                                                           scale_jitter_factor=settings.scale_jitter_factor,
+                                                           mode='sequence',
+                                                           transform=transform_train,
+                                                           joint_transform=transform_joint,
+                                                           settings=settings)
 
-    data_processing_val = processing.STARKProcessing(search_area_factor=search_area_factor,
-                                                     output_sz=output_sz,
-                                                     center_jitter_factor=settings.center_jitter_factor,
-                                                     scale_jitter_factor=settings.scale_jitter_factor,
-                                                     mode='sequence',
-                                                     transform=transform_val,
-                                                     joint_transform=transform_joint,
-                                                     settings=settings)
+        data_processing_val = processing.STARKProcessing(search_area_factor=search_area_factor,
+                                                         output_sz=output_sz,
+                                                         center_jitter_factor=settings.center_jitter_factor,
+                                                         scale_jitter_factor=settings.scale_jitter_factor,
+                                                         mode='sequence',
+                                                         transform=transform_val,
+                                                         joint_transform=transform_joint,
+                                                         settings=settings)
+    elif settings.script_name == "timostrack":
+        data_processing_train = processing.TIMProcessing(search_area_factor=search_area_factor,
+                                                           output_sz=output_sz,
+                                                           center_jitter_factor=settings.center_jitter_factor,
+                                                           scale_jitter_factor=settings.scale_jitter_factor,
+                                                           mode='sequence',
+                                                           transform=transform_train,
+                                                           joint_transform=transform_joint,
+                                                           settings=settings)
+
+        data_processing_val = processing.TIMProcessing(search_area_factor=search_area_factor,
+                                                         output_sz=output_sz,
+                                                         center_jitter_factor=settings.center_jitter_factor,
+                                                         scale_jitter_factor=settings.scale_jitter_factor,
+                                                         mode='sequence',
+                                                         transform=transform_val,
+                                                         joint_transform=transform_joint,
+                                                         settings=settings)
 
     # Train sampler and loader
     settings.num_template = getattr(cfg.DATA.TEMPLATE, "NUMBER", 1)

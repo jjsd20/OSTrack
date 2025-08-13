@@ -54,6 +54,9 @@ cfg.TRAIN.VAL_EPOCH_INTERVAL = 20
 cfg.TRAIN.GRAD_CLIP_NORM = 0.1
 cfg.TRAIN.AMP = False
 
+cfg.TRAIN.TIMESNET_LR_MULTIPLIER = 1.0
+cfg.TRAIN.TIMESNET_WEIGHT_DECAY = None
+
 cfg.TRAIN.CE_START_EPOCH = 20  # candidate elimination start epoch
 cfg.TRAIN.CE_WARM_EPOCH = 80  # candidate elimination warm up epoch
 cfg.TRAIN.DROP_PATH_RATE = 0.1  # drop path rate for ViT backbone
