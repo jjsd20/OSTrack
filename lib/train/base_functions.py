@@ -206,31 +206,56 @@ def get_optimizer_scheduler(net, cfg):
         param_dicts = [
             {"params": [p for n, p in net.named_parameters() if "cls" in n and p.requires_grad]}
         ]
-
         for n, p in net.named_parameters():
             if "cls" not in n:
                 p.requires_grad = False
             else:
                 print(n)
     else:
-        param_dicts = [
-            {"params": [p for n, p in net.named_parameters() if "backbone" not in n and p.requires_grad]},
-            {
-                "params": [p for n, p in net.named_parameters() if "backbone" in n and p.requires_grad],
-                "lr": cfg.TRAIN.LR * cfg.TRAIN.BACKBONE_MULTIPLIER,
-            },
-        ]
+        base_lr = cfg.TRAIN.LR
+        bb_mult = getattr(cfg.TRAIN, "BACKBONE_MULTIPLIER", 1.0)
+
+        # TimesNet LR/WD
+        if hasattr(cfg.TRAIN, "TIMESNET_LR"):
+            timesnet_lr = cfg.TRAIN.TIMESNET_LR
+        else:
+            timesnet_lr = base_lr * getattr(cfg.TRAIN, "TIMESNET_LR_MULTIPLIER", 1.0)
+
+        timesnet_wd = getattr(cfg.TRAIN, "TIMESNET_WEIGHT_DECAY", None)
+        if timesnet_wd is None:
+            timesnet_wd = cfg.TRAIN.WEIGHT_DECAY
+
+        # Split parameter groups
+        timesnet_names = [n for n, p in net.named_parameters() if "timesnet" in n and p.requires_grad]
+        backbone_names = [n for n, p in net.named_parameters() if "backbone" in n and p.requires_grad]
+        other_names = [n for n, p in net.named_parameters()
+                       if ("backbone" not in n and "timesnet" not in n) and p.requires_grad]
+
+        param_dicts = []
+        if other_names:
+            param_dicts.append({"params": [p for n, p in net.named_parameters() if n in other_names]})
+        if backbone_names:
+            param_dicts.append({"params": [p for n, p in net.named_parameters() if n in backbone_names],
+                                "lr": base_lr * bb_mult})
+        if timesnet_names:
+            param_dicts.append({"params": [p for n, p in net.named_parameters() if n in timesnet_names],
+                                "lr": timesnet_lr, "weight_decay": timesnet_wd})
+
         if is_main_process():
             print("Learnable parameters are shown below.")
-            for n, p in net.named_parameters():
-                if p.requires_grad:
-                    print(n)
+            print(f"[other] ({len(other_names)})")
+            for n in other_names: print(n)
+            print(f"[backbone] lr={base_lr * bb_mult} ({len(backbone_names)})")
+            for n in backbone_names: print(n)
+            print(f"[timesnet] lr={timesnet_lr} wd={timesnet_wd} ({len(timesnet_names)})")
+            for n in timesnet_names: print(n)
 
     if cfg.TRAIN.OPTIMIZER == "ADAMW":
         optimizer = torch.optim.AdamW(param_dicts, lr=cfg.TRAIN.LR,
                                       weight_decay=cfg.TRAIN.WEIGHT_DECAY)
     else:
         raise ValueError("Unsupported Optimizer")
+
     if cfg.TRAIN.SCHEDULER.TYPE == 'step':
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, cfg.TRAIN.LR_DROP_EPOCH)
     elif cfg.TRAIN.SCHEDULER.TYPE == "Mstep":
