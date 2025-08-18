@@ -12,7 +12,7 @@ class WandbWriter:
         self.wandb = wandb
         self.step = cur_step
         self.interval = step_interval
-        wandb.init(project="tracking", name=exp_name, config=cfg, dir=output_dir)
+        wandb.init(project="got10ktrain", name=exp_name, config=cfg, dir=output_dir)
 
     def write_log(self, stats: OrderedDict, epoch=-1):
         self.step += 1

@@ -71,6 +71,8 @@ class TIMOSTrack(BaseTracker):
         
         # 初始化历史序列 - 用初始边界框填充50帧
         initial_bbox = info['init_bbox']  # [x, y, w, h]
+        # H, W, _ = image.shape
+        # initial_bbox = [initial_bbox[0] / W, initial_bbox[1] / H, initial_bbox[2] / W, initial_bbox[3] / H]
         self.history_sequence = [initial_bbox] * self.max_history_length
         
         # 转换为TimesNet需要的格式 [seq_len, 4] -> [1, seq_len, 4]
@@ -106,6 +108,7 @@ class TIMOSTrack(BaseTracker):
             dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
         # get the final box result
         self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
+       # self.seq = [self.state[0] / W, self.state[1] / H, self.state[2] / W, self.state[3] / H]
         
         # 更新历史序列 - 滑动窗口机制
         self.history_sequence.append(self.state)
