@@ -49,7 +49,7 @@ class TIMOSTrack(BaseTracker):
         
         # 历史跟踪序列缓存 - 保存前50帧的跟踪结果
         self.history_sequence = []
-        self.max_history_length = 50  # 保持50帧历史
+        self.max_history_length = 200  # 保持50帧历史
 
     def initialize(self, image, info: dict):
         # forward the template once
@@ -108,9 +108,10 @@ class TIMOSTrack(BaseTracker):
             dim=0) * self.params.search_size / resize_factor).tolist()  # (cx, cy, w, h) [0,1]
         # get the final box result
         self.state = clip_box(self.map_box_back(pred_box, resize_factor), H, W, margin=10)
-       # self.seq = [self.state[0] / W, self.state[1] / H, self.state[2] / W, self.state[3] / H]
-        
+        # self.seq = [self.state[0] / W, self.state[1] / H, self.state[2] / W, self.state[3] / H]
+
         # 更新历史序列 - 滑动窗口机制
+        # self.history_sequence.append(self.seq)
         self.history_sequence.append(self.state)
         if len(self.history_sequence) > self.max_history_length:
             self.history_sequence.pop(0)  # 移除最旧的帧

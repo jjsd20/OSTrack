@@ -2,14 +2,14 @@
 
 # TimesNet配置
 TIMING:
-  seq_len: 50  # 历史序列长度
+  seq_len: 200  # 历史序列长度
   pred_len: 1   # 预测序列长度
-  d_model: 16   # 模型维度
+  d_model: 32   # 模型维度
   embed: 'timeF'  # 嵌入类型
   freq: 'h'     # 频率
   dropout: 0.1
   e_layers: 3   # TimesNet层数
-  top_k: 3      # 周期数量
+  top_k: 4      # 周期数量
   num_kernels: 6
   d_ff: 32
 
@@ -49,7 +49,7 @@ DATA:
     - COCO17
     - TRACKINGNET
     DATASETS_RATIO:
-    - 1
+    - 1.5
     - 1
     - 1
     - 1
@@ -82,8 +82,10 @@ TRAIN:
   EPOCH: 300
   GIOU_WEIGHT: 2.0
   L1_WEIGHT: 5.0
-  TIMESNET_L1_WEIGHT: 0.5
-  TIMESNET_GIOU_WEIGHT: 0.2
+  TIMESNET_L1_WEIGHT: 5
+  TIMESNET_GIOU_WEIGHT: 2
+  TIMESNET_LR_MULTIPLIER: 1.5     # 或者直接用 TIMESNET_LR: 0.0002
+  TIMESNET_WEIGHT_DECAY: 0.0001   # 可选，不写则跟随全局 WEIGHT_DECAY
   GRAD_CLIP_NORM: 0.1
   LR: 0.0004
   LR_DROP_EPOCH: 240

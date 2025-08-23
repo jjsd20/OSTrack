@@ -172,7 +172,7 @@ def build_dataloaders(cfg, settings):
             samples_per_epoch=cfg.DATA.TRAIN.SAMPLE_PER_EPOCH,
             max_gap=cfg.DATA.MAX_SAMPLE_INTERVAL, num_search_frames=settings.num_search,
             num_template_frames=settings.num_template, processing=data_processing_train,
-            frame_sample_mode=sampler_mode, train_cls=train_cls)
+            frame_sample_mode=sampler_mode, train_cls=train_cls,min_interval=cfg.TIMING.seq_len,future_steps=cfg.TIMING.pred_len)
 
         train_sampler = DistributedSampler(dataset_train) if settings.local_rank != -1 else None
         shuffle = False if settings.local_rank != -1 else True
