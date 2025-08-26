@@ -2,7 +2,7 @@
 
 # TimesNet配置
 TIMING:
-  seq_len: 200  # 历史序列长度
+  seq_len: 400  # 历史序列长度
   pred_len: 1   # 预测序列长度
   d_model: 32   # 模型维度
   embed: 'timeF'  # 嵌入类型
@@ -84,10 +84,10 @@ TRAIN:
   L1_WEIGHT: 5.0
   TIMESNET_L1_WEIGHT: 5
   TIMESNET_GIOU_WEIGHT: 2
-  TIMESNET_LR_MULTIPLIER: 1.5     # 或者直接用 TIMESNET_LR: 0.0002
+  TIMESNET_LR_MULTIPLIER: 1.8     # 或者直接用 TIMESNET_LR: 0.0002
   TIMESNET_WEIGHT_DECAY: 0.0001   # 可选，不写则跟随全局 WEIGHT_DECAY
   GRAD_CLIP_NORM: 0.1
-  LR: 0.0004
+  LR: 0.00053333
   LR_DROP_EPOCH: 240
   NUM_WORKER: 10
   OPTIMIZER: ADAMW
