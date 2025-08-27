@@ -49,7 +49,7 @@ class TIMOSTrack(BaseTracker):
         
         # 历史跟踪序列缓存 - 保存前50帧的跟踪结果
         self.history_sequence = []
-        self.max_history_length = 400  # 保持50帧历史
+        self.max_history_length = 200  # 保持50帧历史
 
     def initialize(self, image, info: dict):
         # forward the template once
