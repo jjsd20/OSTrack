@@ -10,8 +10,8 @@ TIMING:
   dropout: 0.1
   e_layers: 3   # TimesNet层数
   top_k: 4      # 周期数量
-  num_kernels: 16
-  d_ff: 32
+  num_kernels: 8
+  d_ff: 64
 
 
 DATA:
