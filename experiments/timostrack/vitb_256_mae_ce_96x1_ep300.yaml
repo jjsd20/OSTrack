@@ -2,7 +2,7 @@
 
 # TimesNet配置
 TIMING:
-  seq_len: 100  # 历史序列长度
+  seq_len: 80  # 历史序列长度
   pred_len: 1   # 预测序列长度
   d_model: 32   # 模型维度
   embed: 'timeF'  # 嵌入类型
