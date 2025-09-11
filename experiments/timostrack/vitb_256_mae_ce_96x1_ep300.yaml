@@ -4,14 +4,14 @@
 TIMING:
   seq_len: 80  # 历史序列长度
   pred_len: 1   # 预测序列长度
-  d_model: 32   # 模型维度
+  d_model: 16   # 模型维度
   embed: 'timeF'  # 嵌入类型
   freq: 'h'     # 频率
   dropout: 0.1
   e_layers: 3   # TimesNet层数
   top_k: 4      # 周期数量
   num_kernels: 8
-  d_ff: 64
+  d_ff: 32
 
 
 DATA:
@@ -84,7 +84,7 @@ TRAIN:
   L1_WEIGHT: 5.0
   TIMESNET_L1_WEIGHT: 5.0
   TIMESNET_GIOU_WEIGHT: 2.0
-  TIMESNET_LR_MULTIPLIER: 1.8     # 或者直接用 TIMESNET_LR: 0.0002
+  TIMESNET_LR_MULTIPLIER: 1.5     # 或者直接用 TIMESNET_LR: 0.0002
   TIMESNET_WEIGHT_DECAY: 0.0001   # 可选，不写则跟随全局 WEIGHT_DECAY
   GRAD_CLIP_NORM: 0.115
   LR: 0.0003
@@ -99,7 +99,7 @@ TRAIN:
   WEIGHT_DECAY: 0.0001
   AMP: False
 TEST:
-  EPOCH: 320
+  EPOCH: 308
   SEARCH_FACTOR: 4.0
   SEARCH_SIZE: 256
   TEMPLATE_FACTOR: 2.0
