@@ -86,8 +86,9 @@ def run(settings):
         actor = CVTOSTrackActor(net=net, objective=objective, loss_weight=loss_weight, settings=settings, cfg=cfg)
     elif settings.script_name == "timostrack":
         focal_loss = FocalLoss()
-        objective = {'giou': giou_loss, 'l1': l1_loss, 'focal': focal_loss, 'cls': BCEWithLogitsLoss(), 'timesnet_l1': l1_loss, 'timesnet_giou': giou_loss}
-        loss_weight = {'giou': cfg.TRAIN.GIOU_WEIGHT, 'l1': cfg.TRAIN.L1_WEIGHT, 'focal': 1., 'cls': 1.0, 'timesnet_l1': cfg.TRAIN.TIMESNET_L1_WEIGHT, 'timesnet_giou': cfg.TRAIN.TIMESNET_GIOU_WEIGHT}
+        objective = {'giou': giou_loss, 'l1': l1_loss, 'focal': focal_loss, 'cls': BCEWithLogitsLoss()}
+        loss_weight = {'giou': cfg.TRAIN.GIOU_WEIGHT, 'l1': cfg.TRAIN.L1_WEIGHT, 'focal': 1., 'cls': 1.0,
+                      'selection': cfg.TRAIN.get('SELECTION_WEIGHT', 0.1), 'multi_candidate': cfg.TRAIN.get('MULTI_CANDIDATE_WEIGHT', 0.05)}
         actor = TIMOSTrackActor(net=net, objective=objective, loss_weight=loss_weight, settings=settings, cfg=cfg)
     else:
         raise ValueError("illegal script name")
